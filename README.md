@@ -4,7 +4,7 @@
 This is a bot made for the Fireside Politics server. Formerly known as Coffee and Politics, created right after the great purge.
 ***
 
-##Getting Started
+## Getting Started
 
 ### Prerequisites
 What you will need to run this Discord bot.
