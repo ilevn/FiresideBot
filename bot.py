@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import sys
@@ -8,7 +9,6 @@ from itertools import cycle
 import aiohttp
 import discord
 import logbook
-from discord.ext import tasks
 from discord.ext.commands import Bot
 from logbook import StreamHandler
 from logbook.compat import redirect_logging
@@ -30,14 +30,21 @@ class FiresideBot(Bot):
         logging.root.setLevel(logging.INFO)
 
         self.session = aiohttp.ClientSession(loop=self.loop)
+        self.pool = None
+
         self._prev_events = deque(maxlen=10)
         self._owner_id = None
         self._app_id = None
         # Start the game status cycle task.
         self.status = cycle(["Communism", "With Stalin", "and Chilling"])
-        self.change_status.start()
+        self.loop.create_task(self.change_status())
 
-        for extension in config.autoload:
+        cached_config = config
+        if cached_config.dev_mode:
+            self.command_prefix = cached_config.dev_prefix
+            self.logger.critical(f"Running in DEV MODE. Prefix set to `{self.command_prefix}`.")
+
+        for extension in cached_config.autoload:
             try:
                 self.load_extension(extension)
             except Exception as e:
@@ -55,9 +62,11 @@ class FiresideBot(Bot):
                                  "config.example.py to config.py")
             exit(1)
 
-    @tasks.loop(seconds=10)
     async def change_status(self):
-        await self.change_presence(activity=discord.Game(next(self.status)))
+        await self.wait_until_ready()
+        while True:
+            await self.change_presence(activity=discord.Game(next(self.status)))
+            await asyncio.sleep(10)
 
     async def on_socket_response(self, data):
         self._prev_events.append(data)
