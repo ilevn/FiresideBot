@@ -10,6 +10,10 @@ import config
 from bot import FiresideBot
 from cogs.utils.db import Table
 
+# Asyncpg still explicitly passes `loop`, which is deprecated since python 3.8.
+# We suppress this here because it's just unwanted noise.
+warnings.simplefilter("ignore", category=DeprecationWarning)
+
 try:
     # Try to load our blazing fast event handler.
     import uvloop
@@ -36,14 +40,6 @@ def run_bot():
     # Assign our bot pool properly
     bot.pool = pool
     bot.run()
-
-
-@click.group(invoke_without_command=True, options_metavar="[options]")
-@click.pass_context
-def main(ctx):
-    """Launches the bot."""
-    if ctx.invoked_subcommand is None:
-        run_bot()
 
 
 @click.group(invoke_without_command=True, options_metavar="[options]")
