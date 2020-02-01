@@ -8,14 +8,12 @@ from itertools import cycle
 import aiohttp
 import discord
 import logbook
-from discord.ext import commands, tasks
+from discord.ext import tasks
 from discord.ext.commands import Bot
 from logbook import StreamHandler
 from logbook.compat import redirect_logging
 
 import config
-
-bot = commands.Bot(command_prefix=".")
 
 redirect_logging()
 
@@ -57,7 +55,7 @@ class FiresideBot(Bot):
 
     @tasks.loop(seconds=10)
     async def change_status(self):
-        await bot.change_presence(activity=discord.Game(next(self.status)))
+        await self.change_presence(activity=discord.Game(next(self.status)))
 
     async def on_socket_response(self, data):
         self._prev_events.append(data)
@@ -70,6 +68,10 @@ class FiresideBot(Bot):
             self._app_id = app_info.id
         except discord.HTTPException:
             self.logger.warn("Could not fetch regular owner info. Defaulting to MFA provided owner.")
+
+        self.logger.info(
+            f"Loaded Fireside Bot, logged in as {self.user.name}#{self.user.discriminator}"
+            f".\nInvite link: {discord.utils.oauth_url(self._app_id)}")
 
     async def process_commands(self, message):
         # TODO: Add our own Context object.
