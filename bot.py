@@ -43,6 +43,8 @@ class FiresideBot(Bot):
             except Exception as e:
                 self.logger.critical(f"Failed to load extension {extension} -> {e}.")
                 traceback.print_exc()
+            else:
+                self.logger.info(f"Loaded cog {extension}.")
 
     @property
     def config(self):
