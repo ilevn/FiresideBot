@@ -14,6 +14,7 @@ from logbook import StreamHandler
 from logbook.compat import redirect_logging
 
 import config
+from cogs.utils.context import Context
 
 redirect_logging()
 
@@ -85,13 +86,13 @@ class FiresideBot(Bot):
             f".\nInvite link: {discord.utils.oauth_url(self._app_id)}")
 
     async def process_commands(self, message):
-        # TODO: Add our own Context object.
-        ctx = await self.get_context(message)
+        ctx = await self.get_context(message, cls=Context)
 
         if ctx.command is None:
             return
 
-        await self.invoke(ctx)
+        async with ctx.acquire():
+            await self.invoke(ctx)
 
     async def on_message(self, message):
         if message.author.bot:
