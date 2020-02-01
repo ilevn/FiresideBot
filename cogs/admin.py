@@ -1,3 +1,5 @@
+import time
+
 from discord.ext import commands
 from discord.ext.commands import is_owner
 
@@ -7,7 +9,10 @@ from cogs.utils.meta_cog import Cog
 class Admin(Cog):
     @commands.command()
     async def ping(self, ctx):
-        await ctx.send("Pong!")
+        before = time.monotonic()
+        msg = await ctx.send(":ping_pong: Pong!")
+        after = time.monotonic()
+        await msg.edit(content=f":ping_pong: Pong! | {round((after - before) * 1000, 2)}ms")
 
     @commands.command()
     @is_owner()
