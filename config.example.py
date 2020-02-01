@@ -11,6 +11,7 @@ autoload = ["cogs.admin"]
 
 # Whether the bot is running in dev-mode.
 dev_mode = True
+
 # What prefix to use while in dev-mode.
 dev_prefix = "!"
 
