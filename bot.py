@@ -41,7 +41,7 @@ class FiresideBot(Bot):
         self.loop.create_task(self.change_status())
 
         cached_config = config
-        if cached_config.dev_mode:
+        if getattr(cached_config, "dev_mode", False):
             self.command_prefix = cached_config.dev_prefix
             self.logger.critical(f"Running in DEV MODE. Prefix set to `{self.command_prefix}`.")
 
