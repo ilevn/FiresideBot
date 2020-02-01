@@ -36,6 +36,23 @@ the bot with the following template:
 token = "" # Your bot's token.
 autoload = ["cogs", "to", "load"] # List of cogs to load on start-up.
 ```
+
+4. **Create the database**  
+
+For security, it is recommended you create an extra user with a
+password.  
+
+```sh
+CREATE ROLE fbot WITH LOGIN PASSWORD 'yourpw';
+CREATE DATABASE firesidebot OWNER fbot;
+```
+This will create a new database that the bot can modify.
+
+5. **Initialise the database**  
+
+The database initialisation command will fully set up your database.  
+`poetry run python3 run.py db init`  
+
 ### Tests
 To test the bot is running correctly, do .ping in your server. The response should be "Pong" from the bot in your server.
 
