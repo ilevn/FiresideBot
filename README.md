@@ -30,7 +30,7 @@ Once poetry is installed, simply run `poetry install` and you're all set.
 3. **Setup configuration**  
 
 The next step is just to create a `config.py` file in the root directory of
-the bot is with the following template:
+the bot with the following template:
 
 ```py
 token = "" # Your bot's token.
