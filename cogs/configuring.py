@@ -90,6 +90,7 @@ async def convert_channel(ctx, messages, question):
         if not default_channel:
             messages.append(await ctx.send("Parsing ultimately failed. Aborting setup..."))
             await ctx.channel.delete_messages(messages)
+            return
 
     return default_channel
 
