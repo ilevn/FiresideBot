@@ -1,19 +1,35 @@
-import discord
 from discord.ext import commands
+from discord.ext.commands import is_owner
 
-class Admin(commands.Cog):
+from cogs.utils.meta_cog import Cog
 
-    def __init__(self, bot):
 
-        self.client = bot
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        print('Admin is ready')
-
+class Admin(Cog):
     @commands.command()
     async def ping(self, ctx):
-        await ctx.send('Pong!')
+        await ctx.send("Pong!")
 
-def setup(bot):
-    bot.add_cog(Admin(bot))
+    @commands.command()
+    @is_owner()
+    async def load(self, ctx, *, extension):
+        ctx.bot.load_extension(f"cogs.{extension}")
+        await ctx.send(f"{extension} loaded")
+
+    @commands.command()
+    @is_owner()
+    async def unload(self, ctx, extension):
+        ctx.bot.unload_extension(f"cogs.{extension}")
+        await ctx.send(f"{extension} unloaded")
+
+    @commands.command()
+    @is_owner()
+    async def reload(self, ctx, *, extension):
+        try:
+            ctx.bot.reload_extension(extension)
+        except commands.ExtensionError as e:
+            await ctx.send(f"{e.__class__.__name__}: {e}")
+        else:
+            await ctx.send("\N{OK HAND SIGN}")
+
+
+setup = Admin.setup
