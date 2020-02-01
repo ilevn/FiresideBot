@@ -22,4 +22,4 @@ To install this bot, simply clone this repository into your machine, and set you
 To test the bot is running correctly, do .ping in your server. The response should be "Pong" from the bot in your server.
 
 ## Built With
- [Discord.py[voice]](https://github.com/Rapptz/discord.py)
+* [Discord.py[voice]](https://github.com/Rapptz/discord.py)
