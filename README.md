@@ -21,7 +21,7 @@ The bot is coded and tested on *NIX based systems.
 
 This is required to actually run the bot.
 
-2. **Set up the virtualenv and install dependencies.** 
+2. **Set up the virtualenv with Poetry.** 
    
 The project is using [Poetry](https://python-poetry.org/) as its dependency manager.
 
@@ -32,9 +32,14 @@ Once poetry is installed, simply run `poetry install` and you're all set.
 The next step is just to create a `config.py` file in the root directory of
 the bot with the following template:
 
-```py
+```python
 token = "" # Your bot's token.
 autoload = ["cogs", "to", "load"] # List of cogs to load on start-up.
+postgresql = "postgresql://user:password@host/database" # Your postgresql info.
+
+# These are optional
+dev_mode = True | False # Whether the bot should run in development mode.
+dev_prefix = "prefix" # The dev mode bot prefix.
 ```
 
 4. **Create the database.**  
@@ -42,7 +47,7 @@ autoload = ["cogs", "to", "load"] # List of cogs to load on start-up.
 For security, it is recommended you create an extra user with a
 password.  
 
-```sh
+```postgresql
 CREATE ROLE fbot WITH LOGIN PASSWORD 'yourpw';
 CREATE DATABASE firesidebot OWNER fbot;
 ```
