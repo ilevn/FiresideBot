@@ -27,7 +27,7 @@ The project is using [Poetry](https://python-poetry.org/) as its dependency mana
 
 Once poetry is installed, simply run `poetry install` and you're all set.
 
-3. **Setup configuration**  
+3. **Setup configuration.**  
 
 The next step is just to create a `config.py` file in the root directory of
 the bot with the following template:
@@ -37,7 +37,7 @@ token = "" # Your bot's token.
 autoload = ["cogs", "to", "load"] # List of cogs to load on start-up.
 ```
 
-4. **Create the database**  
+4. **Create the database.**  
 
 For security, it is recommended you create an extra user with a
 password.  
@@ -48,7 +48,7 @@ CREATE DATABASE firesidebot OWNER fbot;
 ```
 This will create a new database that the bot can modify.
 
-5. **Initialise the database**  
+5. **Initialise the database.**  
 
 The database initialisation command will fully set up your database.  
 `poetry run python3 run.py db init`  
