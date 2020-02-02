@@ -1,3 +1,4 @@
+import discord
 from discord.ext import commands
 from discord.ext.commands import TextChannelConverter, BadArgument, RoleConverter, VoiceChannelConverter
 
@@ -20,6 +21,8 @@ class GuildConfig(db.Table, table_name='guild_config'):
     greeting = db.Column(db.String)
     # Sentinel to check whether the bot is properly set up.
     is_configured = db.Column(db.Boolean, default=False)
+    # Member tracker channel.
+    tracker_channel_id = db.DiscordIDColumn(nullable=True)
 
 
 class PunishmentConfig(db.Table, table_name='punishment_config'):
@@ -160,6 +163,10 @@ class Config(Cog):
         # Let's kick things off with basic server information.
         messages = [ctx.message, await ctx.send("Let's start by configuring the basics:")]
 
+        create_tracker_channel = await ctx.prompt("Should we create a tracker channel for server members?")
+        if create_tracker_channel:
+            messages.append(await ctx.send("Alrighty. Consider it done."))
+
         default_greeting = await get_arg_or_return("What should the default greeting be?", ctx, messages)
         if not default_greeting:
             return
@@ -261,10 +268,25 @@ class Config(Cog):
 
         # Okay, we have a lot we need to commit now.
         exc = ctx.db.execute
+        # Create a tracker channel, if wanted.
+        channel_id = None
+        if create_tracker_channel:
+            try:
+                # No connecting allowed.
+                overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False)}
+                channel = await ctx.guild.create_voice_channel(name=f"Members: {len(ctx.guild.members)}",
+                                                               position=0, overwrites=overwrites)
+                channel_id = channel.id
+            except discord.HTTPException:
+                messages.append(await ctx.send("Hmm, could not create a text channel, sorry :("))
+
         # First, start with basic guild information
-        query = """INSERT INTO guild_config (id, modlog_channel_id, mod_channel_id, default_channel_id, greeting)
-                   VALUES ($1, $2, $3, $4, $5)"""
-        await exc(query, guild_id, log_channel.id, admin_channel.id, default_channel.id, default_greeting)
+        query = """INSERT INTO guild_config 
+                   (id, modlog_channel_id, mod_channel_id, default_channel_id, greeting, tracker_channel_id)
+                   VALUES ($1, $2, $3, $4, $5, $6)"""
+
+        await exc(query, guild_id, log_channel.id, admin_channel.id,
+                  default_channel.id, default_greeting, channel_id)
 
         # Next, punishments.
         query = """INSERT INTO punishment_config 

@@ -13,9 +13,10 @@ def is_inside_voice(state):
 
 
 class EventConfig:
+    # These slots match with our db columns, which is why the assignment works.
     __slots__ = ('bot', 'id', 'modlog_channel_id', 'mod_channel_id', 'default_channel_id',
-                 'greeting', 'shitpost_channel_id',
-                 'jailed_channel_id', 'shitpost_role_id', 'jailed_role_id', 'mappings')
+                 'greeting', 'shitpost_channel_id', 'jailed_channel_id', 'shitpost_role_id',
+                 'jailed_role_id', 'mappings', 'tracker_channel_id')
 
     @classmethod
     async def from_record(cls, record, bot, vc_mappings):
@@ -47,6 +48,14 @@ class EventConfig:
     def default_channel(self):
         guild = self.bot.get_guild(self.id)
         return guild and guild.get_channel(self.default_channel_id)
+
+    @property
+    def tracker_channel(self):
+        if not self.tracker_channel_id:
+            return
+
+        guild = self.bot.get_guild(self.id)
+        return guild and guild.get_channel(self.tracker_channel_id)
 
 
 class Event(Cog):
@@ -87,6 +96,32 @@ class Event(Cog):
                 channel = guild.get_channel(channel_id)
                 if channel:
                     await channel.set_permissions(member, read_messages=None)
+
+    @Cog.listener()
+    async def update_tracker(self, guild):
+        config = await self.get_guild_config(guild.id)
+        if not config and not config.tracker_channel:
+            return
+
+        # Update the tracker with the latest server size.
+        await config.tracker_channel.edit(name=f"Members: {len(guild.members)}")
+
+    @Cog.listener()
+    async def on_member_join(self, member):
+        config = await self.get_guild_config(member.guild.id)
+        if not config:
+            return
+
+        # Greet.
+        if config.default_channel and config.greeting:
+            # TODO: Support proper member mentions.
+            await config.default_channel.send(config.greeting)
+
+        await self.update_tracker(member.guild)
+
+    @Cog.listener()
+    async def on_member_remove(self, member):
+        await self.update_tracker(member.guild)
 
 
 setup = Event.setup
