@@ -1,7 +1,17 @@
+import json
+import re
 import typing
+from collections import namedtuple, defaultdict
+from datetime import datetime
+from difflib import Differ
 
-from cogs.utils.cache import cache
+import discord
+from discord import Message, Member
+
+from cogs.utils import human_timedelta, Plural, embed_paginate
+from cogs.utils.cache import cache, ExpiringCache
 from cogs.utils.meta_cog import Cog
+from cogs.utils.paginators import BulkDeletePaginator
 
 
 def is_outside_voice(state):
@@ -10,6 +20,23 @@ def is_outside_voice(state):
 
 def is_inside_voice(state):
     return state.channel is not None
+
+
+StateInformation = namedtuple("StateInformation", "roles muted")
+
+
+def clean_roles(member: discord.Member):
+    return ", ".join(clean_role_list(member))
+
+
+def clean_role_list(member: discord.Member):
+    return [x.name for x in member.roles if not x.name == "@everyone"]
+
+
+def get_diff(before, after):
+    dif = list(Differ().compare(before.split(' '), after.split(' ')))
+
+    return " ".join([(f'__{i[2:]}__' if i[0] == '+' else i[2:]) for i in dif if not i[0] in '-?'])
 
 
 class EventConfig:
@@ -63,6 +90,12 @@ class Event(Cog):
     Event cog for message handling.
     """
 
+    def __init__(self, bot):
+        super().__init__(bot)
+        # Save their roles for 60 minutes.
+        self._member_state = defaultdict(lambda: ExpiringCache(3600))
+        self._pending_mute = defaultdict(set)
+
     @cache()
     async def get_guild_config(self, guild_id) -> typing.Optional[EventConfig]:
         # Kinda ugly but works for now.
@@ -97,7 +130,6 @@ class Event(Cog):
                 if channel:
                     await channel.set_permissions(member, read_messages=None)
 
-    @Cog.listener()
     async def update_tracker(self, guild):
         config = await self.get_guild_config(guild.id)
         if not config and not config.tracker_channel:
@@ -107,21 +139,218 @@ class Event(Cog):
         await config.tracker_channel.edit(name=f"Members: {len(guild.members)}")
 
     @Cog.listener()
-    async def on_member_join(self, member):
+    async def on_member_remove(self, member):
+        await self.update_tracker(member.guild)
+
+    @Cog.listener()
+    async def on_member_join(self, member: discord.Member):
         config = await self.get_guild_config(member.guild.id)
         if not config:
             return
 
-        # Greet.
-        if config.default_channel and config.greeting:
-            # TODO: Support proper member mentions.
-            await config.default_channel.send(config.greeting)
-
+        # Update member count.
         await self.update_tracker(member.guild)
+
+        embed = discord.Embed(colour=0x81c784)
+        embed.set_footer(text=str(member.id))
+        embed.timestamp = datetime.utcnow()
+
+        # Try to restore their previous state.
+        # This only applies in case they rejoined within an hour.
+        state: StateInformation = self._member_state[member.guild.id].fetch(member.id)
+        if state:
+            embed.title = f'\U000026a0 User {member.name} re-joined the server!'
+            if state.roles:
+                try:
+                    await member.add_roles(*state.roles, atomic=False, reason="Role-state restore")
+                    self.logger.info(f"Restoring role-state for {member} with {len(state.roles)} previous roles.")
+                except (discord.HTTPException, discord.Forbidden):
+                    pass
+
+            if state.muted:
+                self.logger.info(f"Scheduling mute for {member}.")
+                self._pending_mute[member.guild.id].add(member.id)
+
+            embed.add_field(name="State information",
+                            value=f"Restored roles: {len(state.roles)}\nMuted: {'Yes' if state.muted else 'No'}",
+                            inline=False)
+
+        else:
+            # Probably not a rejoin, though that's not certain.
+            embed.title = f'\U0001f44b User {member.name} joined the server!'
+
+            delta = (member.joined_at - member.created_at).total_seconds() // 60
+            if delta < 10:
+                embed.colour = 0xe57373
+                embed.add_field(name="\U00002757 Young account",
+                                value=f"Created {human_timedelta(member.created_at)}")
+
+                if config.default_channel and config.greeting:
+                    await config.default_channel.send(config.greeting.format(member.mention))
+
+        if config.modlog:
+            ping = "@here" if state and state.muted else ""
+            await config.modlog.send(content=ping, embed=embed)
 
     @Cog.listener()
-    async def on_member_remove(self, member):
-        await self.update_tracker(member.guild)
+    async def on_member_remove(self, member: discord.Member):
+        config = await self.get_guild_config(member.guild.id)
+        if not config:
+            return
+
+        # Save their connection state in case they want to bypass a punishment or a mute.
+        # This is a workaround for `member.voice.mute` because that state only gets displayed when
+        # they're connected to a voice channel.
+        _logs = await member.guild.audit_logs(action=discord.AuditLogAction.member_update).flatten()
+        potentially_muted = next((x.after.mute for x in _logs if getattr(x.after, "mute", None)
+                                  is not None and x.target.id == member.id), False)
+
+        # Exclude @everyone
+        mem_roles = member.roles[1:]
+        self._member_state[member.guild.id][member.id] = StateInformation(roles=mem_roles,
+                                                                          muted=potentially_muted)
+
+        self.logger.info(f"Member left. Saving role-state for {member}: {Plural(len(mem_roles)):role}."
+                         f" They were {'' if potentially_muted else 'not '}previously muted.")
+
+        embed = discord.Embed(colour=0xe57373)
+        embed.title = f'\U0001f6aa User {member.name} left the server!'
+        embed.set_footer(text=str(member.id))
+        embed.timestamp = datetime.utcnow()
+        await config.modlog.send(embed=embed)
+
+    @Cog.listener()
+    async def on_message_edit(self, before: Message, after: Message):
+        config = await self.get_guild_config(after.guild.id)
+        if not config:
+            return
+
+        if not before.author.bot and before.content != after.content and before.content != "" and after.content != "":
+            embed = discord.Embed(colour=0xffcc80)
+            embed.title = f'\U0000270f `[{after.channel.name.upper()}]` User {before.author} edited their message'
+            embed.timestamp = datetime.utcnow()
+
+            embed_paginate(embed, 'Before', before.clean_content, inline=False)
+
+            changes = get_diff(before.clean_content, after.clean_content)
+            if len(changes) > 1024:
+                # Find changed line positions.
+                match = re.finditer(r'__(.*)__', changes)
+                if any(m.start() <= 1024 < m.end() for m in match):
+                    # Cover case where we have a long edit that exceeds the limit.
+                    changes = changes[:1022] + "____" + changes[1022:]
+
+            embed_paginate(embed, 'After', changes, inline=False)
+
+            await config.modlog.send(embed=embed)
+
+    @Cog.listener()
+    async def on_message_delete(self, message: discord.Message):
+        config = await self.get_guild_config(message.guild.id)
+        if not config:
+            return
+
+        if message.author.bot:
+            return
+
+        embed = discord.Embed(colour=0xe57373)
+        embed.title = f'\U0001f525 `[{message.channel.name.upper()}]` User {message.author} deleted their message'
+
+        if message.attachments:
+            image = message.attachments[0].proxy_url
+            embed.add_field(name='Proxy URL (This URL might not be valid for long)', value=image)
+            embed.set_image(url=image)
+
+        if message.content:
+            # Guard against large chunks of text.
+            embed_paginate(embed, "Content", message.clean_content)
+
+        embed.timestamp = datetime.utcnow()
+
+        await config.modlog.send(embed=embed)
+
+    @Cog.listener()
+    async def on_member_update(self, before: Member, after: Member):
+        config = await self.get_guild_config(after.guild.id)
+        if not config:
+            return
+
+        if before.roles != after.roles:
+            fmt_before = clean_role_list(before)
+            fmt_after = clean_role_list(after)
+
+            embed = discord.Embed()
+
+            # Role removed
+            if len(fmt_before) > len(fmt_after):
+                diff = [i for (i, e) in enumerate(fmt_before) if e not in fmt_after]
+
+                for change in diff:
+                    fmt_before[change] = f'~~{fmt_before[change]}~~'
+                embed.colour = 0xe57373
+
+            # Role added
+            elif len(fmt_after) > len(fmt_before):
+                diff = [i for (i, e) in enumerate(fmt_after) if e not in fmt_before]
+
+                for change in diff:
+                    fmt_after[change] = f'+__{fmt_after[change]}__'
+                embed.colour = 0x81c784
+
+            fmt_before = ", ".join(fmt_before)
+            fmt_after = ', '.join(fmt_after)
+
+            embed.title = f"\U0001f4cb {after.name}'s roles have changed:"
+            embed.add_field(name="Before", value=f'{fmt_before} ')
+            embed.add_field(name="After", value=fmt_after)
+            embed.timestamp = datetime.utcnow()
+            try:
+                return await config.modlog.send(embed=embed)
+            except discord.HTTPException:
+                # No previous roles found.
+                # Imo, this is nicer for joins.
+                pass
+
+        if before.nick != after.nick:
+            embed = discord.Embed(colour=0xffcc80)
+            embed.title = f"\U0001f4cb {after.name}'s nickname has changed:"
+            embed.add_field(name="Before", value=before.nick)
+            embed.add_field(name="After", value=after.nick)
+            embed.timestamp = datetime.utcnow()
+            await config.modlog.send(embed=embed)
+
+    @Cog.listener()
+    async def on_bulk_message_delete(self, messages: typing.List[discord.Message]):
+        # Filter bot messages.
+
+        actual_messages = [m for m in messages if not m.author.bot]
+        if not actual_messages:
+            return
+
+        first_message = actual_messages[0]
+
+        # Manually load modlog.
+        config = await self.get_guild_config(first_message.guild.id)
+        if not (config and config.modlog_id):
+            return
+
+        paginator = BulkDeletePaginator(channel=config.modlog, entries=actual_messages,
+                                        event_name=f"\U0001f525 Bulk deletion", timestamp=datetime.utcnow())
+
+        try:
+            await paginator.paginate()
+        except Exception as e:
+            with open('bulk_delete_err.log', 'w', encoding='utf-8') as fp:
+                for message in [m for m in messages if not m.author.bot]:
+                    try:
+                        x = json.dumps({"id": message.id, "content": message.content}, ensure_ascii=True, indent=4)
+                    except:
+                        fp.write(f'{message}\n')
+                    else:
+                        fp.write(f'{x}\n')
+
+            # Re-raise for on_error
+            raise discord.DiscordException("Bulk delete failed") from e
 
 
 setup = Event.setup
