@@ -135,6 +135,13 @@ class Config(Cog):
         # guild -> bool
         self.currently_configuring = {}
 
+    @staticmethod
+    def invalidate_guild_config(ctx):
+        # Invalidate to ensure cache integrity.
+        event_cog = ctx.bot.get_cog("Event")
+        if event_cog:
+            return event_cog.get_guild_config.invalidate(event_cog, ctx.guild.id)
+
     @commands.group()
     @is_maintainer()
     async def config(self, ctx):
@@ -307,6 +314,8 @@ class Config(Cog):
         await ctx.send("Done! Everything should work fine now :)")
         # Could be a potential dead-lock. Maybe consider using a sophomore instead.
         self.currently_configuring[guild_id] = False
+        # Refresh guild config.
+        self.invalidate_guild_config(ctx)
 
 
 setup = Config.setup
