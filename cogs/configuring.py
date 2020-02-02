@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 from discord.ext import commands
 from discord.ext.commands import TextChannelConverter, BadArgument, RoleConverter, VoiceChannelConverter
@@ -246,10 +248,10 @@ class Config(Cog):
 
             messages.append(await ctx.send(formatter))
 
-            entry = await ctx.bot.wait_for("message", timeout=60.0,
-                                           check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
-
-            if entry is None:
+            try:
+                entry = await ctx.bot.wait_for("message", timeout=60.0,
+                                               check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
+            except asyncio.TimeoutError:
                 break
 
             messages.append(entry)
