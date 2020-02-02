@@ -278,7 +278,7 @@ class Config(Cog):
                                                                position=0, overwrites=overwrites)
                 channel_id = channel.id
             except discord.HTTPException:
-                messages.append(await ctx.send("Hmm, could not create a text channel, sorry :("))
+                messages.append(await ctx.send("Hmm, could not create the tracker channel, sorry :("))
 
         # First, start with basic guild information
         query = """INSERT INTO guild_config 
