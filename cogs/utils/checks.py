@@ -30,9 +30,10 @@ def is_admin():
     return commands.check(pred)
 
 
-def is_maintainer():
-    async def pred(ctx):
-        # Penloy & 0x1.
-        return ctx.author.id in (320285462864461835, 189462608334553089)
+async def maintainer_check(ctx):
+    # Penloy & 0x1.
+    return ctx.author.id in (320285462864461835, 189462608334553089)
 
-    return commands.check(pred)
+
+def is_maintainer():
+    return commands.check(maintainer_check)
