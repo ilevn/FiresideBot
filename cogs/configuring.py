@@ -36,8 +36,9 @@ class PunishmentConfig(db.Table, table_name='punishment_config'):
 
 
 class VCChannelConfig(db.Table, table_name='vc_channel_config'):
+    id = db.PrimaryKeyColumn()
     # The guild id.
-    id = db.Column(db.Integer(big=True), primary_key=True)
+    guild_id = db.Column(db.Integer(big=True))
     # The vc channel id.
     channel_id = db.DiscordIDColumn()
     # The corresponding role to assign.
@@ -157,7 +158,7 @@ class Config(Cog):
         # Lock command.
         self.currently_configuring[guild_id] = True
         # Let's kick things off with basic server information.
-        messages = [await ctx.send("Let's start by configuring the basics:")]
+        messages = [ctx.message, await ctx.send("Let's start by configuring the basics:")]
 
         default_greeting = await get_arg_or_return("What should the default greeting be?", ctx, messages)
         if not default_greeting:
@@ -273,13 +274,13 @@ class Config(Cog):
 
         # Vc mappings. Simple BULK COPY.
         to_insert = [(guild_id, vc.id, ro.id) for vc, ro in vc_mapping]
-        await ctx.db.copy_records_to_table("vc_channel_config", columns=("id", "channel_id", "role_id"),
+        await ctx.db.copy_records_to_table("vc_channel_config", columns=("guild_id", "channel_id", "role_id"),
                                            records=to_insert)
 
         # Lastly, set our sentinel.
         await exc("UPDATE guild_config SET is_configured = TRUE WHERE id = $1", guild_id)
         await ctx.channel.delete_messages(messages)
-        await ctx.send("Done! Everything should work fine now :)", delete_after=3)
+        await ctx.send("Done! Everything should work fine now :)")
         # Could be a potential dead-lock. Maybe consider using a sophomore instead.
         self.currently_configuring[guild_id] = False
 
