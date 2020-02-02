@@ -11,11 +11,11 @@ class GuildConfig(db.Table, table_name='guild_config'):
     # The guild id.
     id = db.Column(db.Integer(big=True), primary_key=True)
     # Default log channel for message related events, etc.
-    modlog_channel = db.DiscordIDColumn()
+    modlog_channel_id = db.DiscordIDColumn()
     # Admin channel.
     mod_channel_id = db.DiscordIDColumn()
     # Default channel on the server. Probably #general in most cases.
-    default_channel = db.DiscordIDColumn()
+    default_channel_id = db.DiscordIDColumn()
     # Bot greeting for ON_MEMBER_ADD
     greeting = db.Column(db.String)
     # Sentinel to check whether the bot is properly set up.
@@ -39,10 +39,10 @@ class VCChannelConfig(db.Table, table_name='vc_channel_config'):
     id = db.PrimaryKeyColumn()
     # The guild id.
     guild_id = db.Column(db.Integer(big=True))
-    # The vc channel id.
+    # The voice channel id.
+    vc_channel_id = db.DiscordIDColumn()
+    # The corresponding voice room id.
     channel_id = db.DiscordIDColumn()
-    # The corresponding role to assign.
-    role_id = db.DiscordIDColumn()
 
 
 async def get_arg_or_return(question, ctx, messages):
@@ -71,13 +71,13 @@ async def parse_vc_mapping(ctx, arg):
         return
 
     try:
-        channel = await VoiceChannelConverter().convert(ctx, channel_arg)
-        role = await RoleConverter().convert(ctx, role_arg)
+        vc_channel = await VoiceChannelConverter().convert(ctx, channel_arg)
+        channel = await TextChannelConverter().convert(ctx, role_arg)
     except BadArgument:
         await ctx.send("Doesn't look like a valid specifier...", delete_after=3)
         return
 
-    return channel, role
+    return vc_channel, channel
 
 
 async def convert_channel(ctx, messages, question):
@@ -235,7 +235,7 @@ class Config(Cog):
             formatter = f"Up to {Plural(len_channels - chan_i):channel} left to configure" \
                         f" or cancel with `{ctx.prefix}cancel`." \
                         "\nPlease follow the following format: " \
-                        "`<vc channel id or name>:<role id or name or mention>`"
+                        "`<vc channel id or name>:<channel id or name or mention>`"
 
             messages.append(await ctx.send(formatter))
 
@@ -262,7 +262,7 @@ class Config(Cog):
         # Okay, we have a lot we need to commit now.
         exc = ctx.db.execute
         # First, start with basic guild information
-        query = """INSERT INTO guild_config (id, modlog_channel, mod_channel_id, default_channel, greeting)
+        query = """INSERT INTO guild_config (id, modlog_channel_id, mod_channel_id, default_channel_id, greeting)
                    VALUES ($1, $2, $3, $4, $5)"""
         await exc(query, guild_id, log_channel.id, admin_channel.id, default_channel.id, default_greeting)
 
@@ -273,8 +273,8 @@ class Config(Cog):
         await exc(query, guild_id, jailed_role.id, shitpost_role.id, jailed_channel.id, shitpost_channel.id)
 
         # Vc mappings. Simple BULK COPY.
-        to_insert = [(guild_id, vc.id, ro.id) for vc, ro in vc_mapping]
-        await ctx.db.copy_records_to_table("vc_channel_config", columns=("guild_id", "channel_id", "role_id"),
+        to_insert = [(guild_id, vc.id, ch.id) for vc, ch in vc_mapping]
+        await ctx.db.copy_records_to_table("vc_channel_config", columns=("guild_id", "vc_channel_id", "channel_id"),
                                            records=to_insert)
 
         # Lastly, set our sentinel.
