@@ -1,3 +1,6 @@
+import discord
+
+
 class Plural:
     def __init__(self, value):
         self.value = value
@@ -23,6 +26,22 @@ def human_join(seq, delim=', ', final='or'):
         return f'{seq[0]} {final} {seq[1]}'
 
     return delim.join(map(str, seq[:-1])) + f' {final} {seq[-1]}'
+
+
+def embed_paginate(embed: discord.Embed, name, value, limit=1024, inline=True):
+    """
+    Paginate large discord messages.
+    """
+
+    if len(value) > limit:
+        for (i, block) in enumerate(value[i:i + limit] for i in range(0, len(value), limit)):
+            embed.add_field(name=f"{name} {i + 1}", value=block, inline=inline)
+
+    # Only paginate if needed.
+    else:
+        embed.add_field(name=name, value=value, inline=inline)
+
+    return embed
 
 
 class TabularData:
