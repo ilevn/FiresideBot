@@ -1,16 +1,17 @@
+import typing
+from collections import namedtuple
+from math import ceil
+
+import discord
+
 # Workflow
 # List of messages gets submitted
 # Calculate total char size
 # Calculate fields and number of embeds based on that.
 
-import typing
 # 9000 / 6000 = ceil() -> 2
 # 9000 / ceil()(2) -> 4500
 # 4500 / 1024 -> 5 fields rounded
-from collections import namedtuple
-from math import ceil
-
-import discord
 
 EMBED_MAX = 5800
 FIELD_MAX = 25
