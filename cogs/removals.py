@@ -377,13 +377,13 @@ class Removals(Cog):
         query = "INSERT INTO removals (user_id, moderator_id, reason, guild_id, type) VALUES ($1, $2, $3, $4, $5)"
         await ctx.db.execute(query, member.id, ctx.author.id, reason, ctx.guild.id, RemovalType.KICK.value)
 
-        await member.ban(delete_message_days=7, reason=reason)
+        await member.kick(reason=reason)
         self.known_removals.add(member.id)
         await ctx.send('\N{OK HAND SIGN}')
 
     @commands.command()
     @is_mod()
-    async def kick(self, ctx, member: discord.Member, *, reason: ActionReason = None):
+    async def unban(self, ctx, member: discord.Member, *, reason: ActionReason = None):
         """
         Unbans a member from the server.
         """
