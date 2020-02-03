@@ -180,7 +180,7 @@ class Removals(Cog):
 
     async def _parse_and_log_event(self, guild, member, type_, formatter):
         # First, try to get audit log info.
-        info = await self.get_potential_removal_entry(guild, member, RemovalType.KICK)
+        info = await self.get_potential_removal_entry(guild, member, type_)
         if not info:
             # Not removed or member couldn't be found.
             return
