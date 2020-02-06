@@ -18,3 +18,6 @@ class Cog(commands.Cog):
     @classmethod
     def setup(cls, bot: FiresideBot):
         bot.add_cog(cls(bot))
+
+    def __repr__(self):
+        return f"<cogs.{self.__class__.__name__}>"
