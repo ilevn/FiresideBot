@@ -85,22 +85,25 @@ class SpamChecker:
 
 
 class RaidConfig:
-    __slots__ = ("bot", "id", "raid_mode", "broadcast_channel",
+    __slots__ = ("bot", "id", "raid_mode", "broadcast_channel_id",
                  "mention_count", "safe_mention_channel_ids")
 
     @classmethod
     async def from_record(cls, record, bot):
         self = cls()
+
         self.bot = bot
-
-        for val in RaidConfig.__slots__:
-            actual_val = record.get(val)
-            if not actual_val:
-                continue
-
-            setattr(self, val, actual_val)
-
+        self.id = record["id"]
+        self.raid_mode = record["raid_mode"]
+        self.broadcast_channel_id = record["broadcast_channel"]
+        self.mention_count = record["mention_count"]
+        self.safe_mention_channel_ids = set(record["safe_mention_channel_ids"] or [])
         return self
+
+    @property
+    def broadcast_channel(self):
+        guild = self.bot.get_guild(self.id)
+        return guild and guild.get_channel(self.broadcast_channel_id)
 
 
 # This is inspired by Danny"s raid handling and
@@ -114,7 +117,7 @@ class RaidControl(Cog):
         self._disable_lock = asyncio.Lock(loop=bot.loop)
 
     @cache()
-    async def get_guild_config(self, guild_id):
+    async def get_raid_config(self, guild_id):
         query = """SELECT * FROM guild_raid_config WHERE id=$1;"""
         async with self.bot.pool.acquire() as con:
             record = await con.fetchrow(query, guild_id)
@@ -158,7 +161,7 @@ class RaidControl(Cog):
             return
 
         guild_id = message.guild.id
-        if (config := await self.get_guild_config(guild_id)) is None:
+        if (config := await self.get_raid_config(guild_id)) is None:
             return
 
         if not config.raid_mode:
@@ -190,7 +193,7 @@ class RaidControl(Cog):
 
     async def on_member_join(self, member):
         guild_id = member.guild.id
-        config = await self.get_guild_config(guild_id)
+        config = await self.get_raid_config(guild_id)
         if config is None:
             return
 
@@ -306,7 +309,7 @@ class RaidControl(Cog):
                     """
 
         await ctx.db.execute(query, ctx.guild.id, mode.value, channel.id)
-        self.get_guild_config.invalidate(self, ctx.guild.id)
+        self.get_raid_config.invalidate(self, ctx.guild.id)
         await ctx.send(f"Raid mode enabled. Broadcasting join messages to {channel.mention}.")
 
     async def disable_raid_mode(self, guild_id):
@@ -319,7 +322,7 @@ class RaidControl(Cog):
 
         await self.bot.pool.execute(query, guild_id, RaidMode.off.value)
         self._spam_checker.pop(guild_id, None)
-        self.get_guild_config.invalidate(self, guild_id)
+        self.get_raid_config.invalidate(self, guild_id)
 
     @raid.command(name="off", aliases=["disable", "disabled"])
     @is_mod()
@@ -368,7 +371,7 @@ class RaidControl(Cog):
         if count == 0:
             query = """UPDATE guild_raid_config SET mention_count = NULL WHERE id=$1;"""
             await ctx.db.execute(query, ctx.guild.id)
-            self.get_guild_config.invalidate(self, ctx.guild.id)
+            self.get_raid_config.invalidate(self, ctx.guild.id)
             return await ctx.send("Auto-banning members has been disabled.")
 
         if count <= 3:
@@ -381,7 +384,7 @@ class RaidControl(Cog):
                        mention_count = $2;
                 """
         await ctx.db.execute(query, ctx.guild.id, count)
-        self.get_guild_config.invalidate(self, ctx.guild.id)
+        self.get_raid_config.invalidate(self, ctx.guild.id)
         await ctx.send(f"Now auto-banning members that mention more than {count} users.")
 
     @mentionspam.command(name="ignore", aliases=["bypass"])
@@ -405,7 +408,7 @@ class RaidControl(Cog):
 
         channel_ids = [c.id for c in channels]
         await ctx.db.execute(query, ctx.guild.id, channel_ids)
-        self.get_guild_config.invalidate(self, ctx.guild.id)
+        self.get_raid_config.invalidate(self, ctx.guild.id)
         await ctx.send(f"Mentions are now ignored on {', '.join(c.mention for c in channels)}.")
 
     @mentionspam.command(name="unignore", aliases=["protect"])
@@ -427,7 +430,7 @@ class RaidControl(Cog):
                 """
 
         await ctx.db.execute(query, ctx.guild.id, [c.id for c in channels])
-        self.get_guild_config.invalidate(self, ctx.guild.id)
+        self.get_raid_config.invalidate(self, ctx.guild.id)
         await ctx.send("Updated mentionspam ignore list.")
 
 
