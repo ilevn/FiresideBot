@@ -36,6 +36,8 @@ class FiresideBot(Bot):
 
         self._prev_events = deque(maxlen=10)
         self._owner_id = None
+        # Hard-code Penloy and 0x1.
+        self.maintainers = (320285462864461835, 189462608334553089)
         self._app_id = None
         # Start the game status cycle task.
         self.status = cycle(["Communism", "With Stalin", "and Chilling"])

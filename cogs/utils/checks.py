@@ -32,7 +32,7 @@ def is_admin():
 
 async def maintainer_check(ctx):
     # Penloy & 0x1.
-    return ctx.author.id in (320285462864461835, 189462608334553089)
+    return ctx.author.id in ctx.bot.maintainers
 
 
 def is_maintainer():
