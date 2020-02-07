@@ -18,19 +18,6 @@ class Roles(db.Table):
     category = db.Column(db.String, nullable=True)
 
 
-class CommunityConfig:
-    __slots__ = ("bot", "id", "poll_channel_id", "rolepool_ids")
-
-    @classmethod
-    def from_record(cls, record, bot):
-        self = cls()
-
-        self.bot = bot
-        self.id = record["id"]
-        self.poll_channel_id = record["poll_channel_id"]
-        return self
-
-
 class Community(Cog):
     def __init__(self, bot):
         super().__init__(bot)
