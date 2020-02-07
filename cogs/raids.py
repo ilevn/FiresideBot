@@ -241,8 +241,6 @@ class RaidControl(Cog):
         """Controls raid mode on the server.
         Calling this command with no arguments will show the current raid
         mode information.
-        You must have Manage Server permissions to use this command or
-        its subcommands.
         """
 
         query = "SELECT raid_mode, broadcast_channel FROM guild_raid_config WHERE id=$1;"
@@ -265,7 +263,7 @@ class RaidControl(Cog):
         levels and allows the bot to broadcast new members joining
         to a specified channel.
         If no channel is given, the bot will broadcast join
-        messages on the channel this command was used in.
+        messages in the channel this command was used in.
         """
 
         channel = channel or ctx.channel
@@ -352,7 +350,6 @@ class RaidControl(Cog):
         then this is disabled.
         This only applies for user mentions. Everyone or Role
         mentions are not included.
-        To use this command you must have the Ban Members permission.
         """
 
         if count is None:
@@ -394,7 +391,6 @@ class RaidControl(Cog):
         """Specifies what channels ignore mentionspam auto-bans.
         If a channel is given then that channel will no longer be protected
         by auto-banning from mention spammers.
-        To use this command you must have the Ban Members permission.
         """
 
         query = """UPDATE guild_raid_config
@@ -409,14 +405,13 @@ class RaidControl(Cog):
         channel_ids = [c.id for c in channels]
         await ctx.db.execute(query, ctx.guild.id, channel_ids)
         self.get_raid_config.invalidate(self, ctx.guild.id)
-        await ctx.send(f"Mentions are now ignored on {', '.join(c.mention for c in channels)}.")
+        await ctx.send(f"Mentions are now ignored in {', '.join(c.mention for c in channels)}.")
 
     @mentionspam.command(name="unignore", aliases=["protect"])
     @commands.guild_only()
     @is_mod()
     async def mentionspam_unignore(self, ctx, *channels: discord.TextChannel):
         """Specifies what channels to take off the ignore list.
-        To use this command you must have the Ban Members permission.
         """
 
         if not channels:
