@@ -39,11 +39,14 @@ def get_diff(before, after):
     return " ".join([(f'__{i[2:]}__' if i[0] == '+' else i[2:]) for i in dif if not i[0] in '-?'])
 
 
+_SENTINEL = object()
+
+
 class EventConfig:
     # These slots match with our db columns, which is why the assignment works.
     __slots__ = ('bot', 'id', 'modlog_channel_id', 'mod_channel_id', 'default_channel_id',
                  'greeting', 'shitpost_channel_id', 'jailed_channel_id', 'shitpost_role_id',
-                 'jailed_role_id', 'mappings', 'tracker_channel_id')
+                 'jailed_role_id', 'mappings', 'tracker_channel_id', 'poll_channel_id')
 
     @classmethod
     async def from_record(cls, record, bot, vc_mappings):
@@ -53,8 +56,8 @@ class EventConfig:
         self.mappings = dict(vc_mappings)
         # Thanks python for allowing this.
         for val in EventConfig.__slots__:
-            actual_val = record.get(val)
-            if not actual_val:
+            actual_val = record.get(val, _SENTINEL)
+            if actual_val is _SENTINEL:
                 continue
 
             setattr(self, val, actual_val)

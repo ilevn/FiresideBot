@@ -1,4 +1,5 @@
 import asyncio
+from typing import Optional
 
 import discord
 from discord.ext import commands
@@ -25,6 +26,8 @@ class GuildConfig(db.Table, table_name='guild_config'):
     is_configured = db.Column(db.Boolean, default=False)
     # Member tracker channel.
     tracker_channel_id = db.DiscordIDColumn(nullable=True)
+    # The default poll channel.
+    poll_channel_id = db.DiscordIDColumn()
 
 
 class PunishmentConfig(db.Table, table_name='punishment_config'):
@@ -43,7 +46,7 @@ class PunishmentConfig(db.Table, table_name='punishment_config'):
 class VCChannelConfig(db.Table, table_name='vc_channel_config'):
     id = db.PrimaryKeyColumn()
     # The guild id.
-    guild_id = db.Column(db.Integer(big=True))
+    guild_id = db.DiscordIDColumn()
     # The voice channel id.
     vc_channel_id = db.DiscordIDColumn()
     # The corresponding voice room id.
@@ -316,6 +319,70 @@ class Config(Cog):
         self.currently_configuring[guild_id] = False
         # Refresh guild config.
         self.invalidate_guild_config(ctx)
+
+    async def _bulk_add_roles(self, ctx, roles, category=None):
+        async with ctx.db.transaction():
+            query = "SELECT role_id FROM roles WHERE guild_id = $1;"
+            records = await ctx.db.fetch(query, ctx.guild.id)
+
+            # Don't insert duplicate roles.
+            current_roles = {r[0] for r in records}
+            guild_id = ctx.guild.id
+            to_insert = [(guild_id, r.id, category) for r in roles if r.id not in current_roles]
+
+            # BULK COPY.
+            await ctx.db.copy_records_to_table('roles', columns=('guild_id', 'role_id', 'category'),
+                                               records=to_insert)
+
+            # Invalidate cache, if applicable.
+            if cog := self.bot.get_cog("Community"):
+                cog.get_pool_roles.invalidate_containing(f"{ctx.guild.id!r}")
+
+    # Maybe change perm system.
+    @config.group(name="roles")
+    @is_maintainer()
+    async def _roles(self, ctx):
+        """Handles assignable roles for the server """
+        pass
+
+    @_roles.command(name="enable", aliases=["asar", "add"])
+    async def roles_enable(self, ctx, category: Optional[str] = None, *roles: discord.Role):
+        """Add roles to the central rolepool of the server.
+        This will append roles to the existing rolepool, if any are found.
+        """
+
+        if not roles:
+            return await ctx.send("Missing roles to add.")
+
+        if category:
+            category = category.lower()
+
+        await self._bulk_add_roles(ctx, roles, category)
+        await ctx.send("Updated rolepool.")
+
+    @_roles.command(name="batchenable")
+    async def roles_enable_batch(self, ctx, start_idx: int, end_idx: int):
+        """Batch inserts new roles into the available rolepool"""
+        # TODO: Add this
+        pass
+
+    @_roles.command(name="disable")
+    async def roles_disable(self, ctx, *roles: discord.Role):
+        """Remove roles from the central rolepool of the server.
+        This will remove roles from the existing rolepool, if any are found.
+        """
+
+        if not roles:
+            return await ctx.send("Missing roles to remove.")
+
+        query = "DELETE FROM roles WHERE guild_id = $1 AND role_id = ANY($2::bigint[])"
+        await ctx.db.execute(query, ctx.guild.id, [c.id for c in roles])
+
+        if cog := ctx.bot.get_cog("Community"):
+            # Flush cache, if cog is loaded.
+            cog.get_pool_roles.invalidate_containing(f"{ctx.guild.id!r}")
+
+        await ctx.send("Updated rolepool.")
 
 
 setup = Config.setup
