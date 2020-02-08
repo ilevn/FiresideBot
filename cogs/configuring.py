@@ -132,6 +132,39 @@ async def _try_convert_role(ctx, arg):
         return
 
 
+class RoleRange(commands.Converter):
+    async def convert(self, ctx, argument):
+        first, _, second = argument.partition("..")
+        try:
+            # arg == idx_a..idx_b
+            first_pos = int(first)
+            second_pos = int(second)
+        except ValueError:
+            # arg == role_a..role_b
+            first_pos = await _try_convert_role(ctx, first)
+            if not first_pos:
+                raise BadArgument(f"Invalid first argument {first}")
+
+            second_pos = await _try_convert_role(ctx, second)
+            if not second_pos:
+                raise BadArgument(f"Invalid second argument {second}")
+
+            first_pos = first_pos.position
+            second_pos = second_pos.position
+
+        # At this point we're pretty sure valid role args were provided.
+        # Nevertheless, lets validate some stuff.
+        # We don't check for pos == -1 for now since that allows clever shortcuts.
+        bot_highest = ctx.guild.me.top_role.position
+        if any((bad_pos := pos) >= bot_highest for pos in (first_pos, second_pos)):
+            raise BadArgument(f"Bad range provided. I cannot assign role at idx {bad_pos}"
+                              " due to role hierarchy conflicts.")
+        if first_pos <= second_pos:
+            raise BadArgument("Bad range provided. Make sure that `first_role.pos > second_role.pos`.")
+
+        return ctx.guild.roles[second_pos:first_pos + 1]
+
+
 class Config(Cog):
     def __init__(self, bot):
         super().__init__(bot)
@@ -360,11 +393,13 @@ class Config(Cog):
         await self._bulk_add_roles(ctx, roles, category)
         await ctx.send("Updated rolepool.")
 
-    @_roles.command(name="batchenable")
-    async def roles_enable_batch(self, ctx, start_idx: int, end_idx: int):
-        """Batch inserts new roles into the available rolepool"""
-        # TODO: Add this
-        pass
+    @_roles.command(name="batchadd", usage="<category> <first_pos|role_a>..<second_pos|role_b>")
+    async def roles_add_batch(self, ctx, category, role_range: RoleRange):
+        """Batch inserts new roles into the available rolepool with a given category.
+        Role ranges are inclusive and should be provided in descending order.
+        """
+        await self._bulk_add_roles(ctx, role_range, category)
+        await ctx.send("Updated rolepool.")
 
     @_roles.command(name="disable")
     async def roles_disable(self, ctx, *roles: discord.Role):
