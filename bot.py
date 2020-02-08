@@ -38,17 +38,19 @@ class FiresideBot(Bot):
         self._owner_id = None
         # Hard-code Penloy and 0x1.
         self.maintainers = (320285462864461835, 189462608334553089)
+        self.dev_mode = getattr(config, "dev_mode", False)
         self._app_id = None
         # Start the game status cycle task.
         self.status = cycle(["Communism", "With Stalin", "and Chilling"])
         self.loop.create_task(self.change_status())
 
-        cached_config = config
-        if getattr(cached_config, "dev_mode", False):
-            self.command_prefix = cached_config.dev_prefix
-            self.logger.critical(f"Running in DEV MODE. Prefix set to `{self.command_prefix}`.")
+        if self.dev_mode:
+            self.command_prefix = config.dev_prefix
+            fmt = "!!RUNNING IN DEV MODE. TURN OFF IN PRODUCTION!! " \
+                  f"Prefix set to `{self.command_prefix}`."
+            self.logger.critical(fmt)
 
-        for extension in cached_config.autoload:
+        for extension in config.autoload:
             try:
                 self.load_extension(extension)
             except Exception as e:
@@ -114,7 +116,7 @@ class FiresideBot(Bot):
                 self.logger.critical(f'In {ctx.command.qualified_name}:')
                 traceback.print_tb(original.__traceback__)
                 self.logger.critical(f'{original.__class__.__name__}: {original}')
-        elif isinstance(error, commands.ArgumentParsingError):
+        elif isinstance(error, commands.ArgumentParsingError) or self.dev_mode:
             await ctx.send(error)
 
     def run(self):
