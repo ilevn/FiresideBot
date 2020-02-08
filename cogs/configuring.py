@@ -1,4 +1,6 @@
 import asyncio
+import textwrap
+from collections import namedtuple
 from typing import Optional
 
 import discord
@@ -9,6 +11,7 @@ from cogs.utils import db
 from cogs.utils.checks import is_maintainer
 from cogs.utils.formatting import Plural
 from cogs.utils.meta_cog import Cog
+from cogs.utils.paginators import Pages
 
 
 class GuildConfig(db.Table, table_name='guild_config'):
@@ -41,6 +44,8 @@ class PunishmentConfig(db.Table, table_name='punishment_config'):
     jailed_channel_id = db.DiscordIDColumn()
     # Shitpost channel.
     shitpost_channel_id = db.DiscordIDColumn()
+    # Punishment channel.
+    punishment_channel_id = db.DiscordIDColumn()
 
 
 class VCChannelConfig(db.Table, table_name='vc_channel_config'):
@@ -165,6 +170,11 @@ class RoleRange(commands.Converter):
         return ctx.guild.roles[second_pos:first_pos + 1]
 
 
+_Channels = namedtuple("_Channels",
+                       "with_tracker greeting default_channel admin_channel "
+                       "log_channel punishment_channel shitpost_channel jailed_channel")
+
+
 class Config(Cog):
     def __init__(self, bot):
         super().__init__(bot)
@@ -185,30 +195,10 @@ class Config(Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send_help('config')
 
-    @config.command(name="setup")
-    @is_maintainer()
-    async def config_setup(self, ctx):
-        """Sets up the bot to ensure events are properly handled."""
-
-        guild_id = ctx.guild.id
-        # First, check if we even to configure the bot.
-        is_setup = await ctx.db.fetchval("SELECT is_configured FROM guild_config WHERE id = $1", guild_id)
-        if is_setup:
-            await ctx.send("This bot is already fully set up. "
-                           "If you believe this is a mistake,"
-                           " manually clear `is_configured` in `guild_config`.")
-            return
-
-        if self.currently_configuring.get(guild_id):
-            await ctx.send("The bot is currently being configured...")
-            return
-
-        # Lock command.
-        self.currently_configuring[guild_id] = True
-        # Let's kick things off with basic server information.
-        messages = [ctx.message, await ctx.send("Let's start by configuring the basics:")]
-
-        create_tracker_channel = await ctx.prompt("Should we create a tracker channel for server members?")
+    @staticmethod
+    async def _setup_channels(ctx, messages):
+        create_tracker_channel = await ctx.prompt("Should we create a tracker channel for server members?",
+                                                  timeout=210)
         if create_tracker_channel:
             messages.append(await ctx.send("Alrighty. Consider it done."))
 
@@ -232,22 +222,42 @@ class Config(Cog):
 
         messages.append(await ctx.send(f"The admin channel is going to be {admin_channel.mention}."))
 
+        # Punishment channel.
+        question = "Where should punishments be logged?"
+        punishment_channel = await convert_channel(ctx, messages, question)
+        if not punishment_channel:
+            return
+
+        messages.append(await ctx.send(f"The punishments channel is going to be {punishment_channel.mention}."))
+
         # Log channel.
         question = "Where should messages be logged?"
         log_channel = await convert_channel(ctx, messages, question)
         if not log_channel:
             return
 
+        messages.append(await ctx.send(f"The log channel is going to be {log_channel.mention}."))
+
         # Shitpost channel.
-        fmt = f"The log channel is going to be {log_channel.mention}." \
-              "\nAwesome! Now we just need to configure the punishment channels, roles and VC mappings :)\n" \
-              "Let's start with punishments. What is the default shitpost channel?"
-        shitpost_channel = await convert_channel(ctx, messages, fmt)
+        shitpost_channel = await convert_channel(ctx, messages, "What is the default shitpost channel?")
         if not shitpost_channel:
             return
 
-        # Shitpost role.
         messages.append(await ctx.send(f"Right, shitposters will be sent to {shitpost_channel.mention}."))
+
+        fmt = "Where are jailed people going to be?"
+        jailed_channel = await convert_channel(ctx, messages, fmt)
+        if not jailed_channel:
+            return
+
+        messages.append(await ctx.send(f"Okay, jailed people will be sent to {jailed_channel.mention}."))
+
+        return _Channels(create_tracker_channel, default_greeting, default_channel.id, admin_channel.id,
+                         log_channel.id, punishment_channel.id, shitpost_channel.id, jailed_channel.id)
+
+    @staticmethod
+    async def _setup_roles(ctx, messages):
+        # Shitpost role.
         has_role = await ctx.prompt("Do you already have a shitposter role?")
         if has_role:
             shitpost_role = await has_role_flow_create(ctx, messages, "Shitposter")
@@ -255,30 +265,23 @@ class Config(Cog):
             # Can't be arsed to add another prompt flow lol.
             shitpost_role = await manually_create_role(ctx, "Shitposter", messages)
 
-        # Jailed channel.
-        fmt = f"Alright. Shitposters will get {shitpost_role.mention}.\n" \
-              "What about jailed people, where will they go?"
-
-        jailed_channel = await convert_channel(ctx, messages, fmt)
-        if not jailed_channel:
-            return
-
         # Jailed role.
-        messages.append(await ctx.send(f"Right, jailed people will be sent to {jailed_channel.mention}."))
         has_role = await ctx.prompt("Do you already have a jailed role?")
         if has_role:
             jailed_role = await has_role_flow_create(ctx, messages, "Jailed")
         else:
             jailed_role = await manually_create_role(ctx, "Jailed", messages)
 
-        # Configure VC channels.
-        # TODO: Add paginator in case the server has more channels.
-        channel_names = [vc.name for vc in ctx.guild.voice_channels]
-        formatted_vc_channels = "\n".join(f"- {vc}" for vc in channel_names)
+        return shitpost_role, jailed_role
 
-        response = "Neat, that's done. Now we need to configure VC channel mappings.\n" \
-                   f"The following channels *can* be configured:\n{formatted_vc_channels}"
-        messages.append(await ctx.send(response))
+    @staticmethod
+    async def _setup_vc_mappings(ctx, messages):
+        messages.append(await ctx.send("Now we need to configure VC channel mappings."))
+        # Setup paginator.
+        channel_names = [vc.name for vc in ctx.guild.voice_channels]
+        pages = Pages(ctx, entries=channel_names, use_index=False)
+        pages.embed.title = "The following channels can be configured"
+        await pages.paginate()
 
         # vc channel -> role id
         vc_mapping = []
@@ -291,9 +294,11 @@ class Config(Cog):
 
             messages.append(await ctx.send(formatter))
 
+            def check(m):
+                return m.author == ctx.author and m.channel == ctx.channel
+
             try:
-                entry = await ctx.bot.wait_for("message", timeout=60.0,
-                                               check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
+                entry = await ctx.bot.wait_for("message", timeout=60.0, check=check)
             except asyncio.TimeoutError:
                 break
 
@@ -304,18 +309,129 @@ class Config(Cog):
 
             parsed = await parse_vc_mapping(ctx, entry.content)
             if not parsed:
-                # Silently ignore for now.
                 continue
 
             vc_mapping.append(parsed)
 
-        messages.append(await ctx.send("Looks like that was it.\nStarting db transaction..."))
+        return vc_mapping
 
-        # Okay, we have a lot we need to commit now.
-        exc = ctx.db.execute
+    # noinspection PyDunderSlots,PyUnresolvedReferences,PyTypeChecker
+    @staticmethod
+    async def _setup_channel_overwrites(guild, punish_channel_id, shitpost_channel_id,
+                                        jailed_channel_id, shitpost_role, jailed_role):
+        """Sets up all channel overwrites for the server."""
+
+        def deny_send_and_react(overwrites):
+            overwrites.send_messages = False
+            overwrites.add_reactions = False
+
+        success, skipped, failure = 0, 0, 0
+        reason = "Automatic server setup"
+
+        for channel in guild.channels:
+            if not isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
+                continue
+
+            perms = channel.permissions_for(guild.me)
+            if perms.manage_roles:
+                jailed_perms = channel.overwrites_for(jailed_role)
+                shitpost_perms = channel.overwrites_for(shitpost_role)
+                # Jailed -> R:Jailed & Punishments
+                # Shitpost -> R:All; W:Shitpost
+                # No one has reactions.
+                if (channel_id := channel.id) == punish_channel_id:
+                    # These should theoretically be the norm
+                    deny_send_and_react(shitpost_perms)
+                    deny_send_and_react(jailed_perms)
+                elif channel_id == shitpost_channel_id:
+                    shitpost_perms.send_messages = True
+                    jailed_perms.send_messages = False
+                elif channel_id == jailed_channel_id:
+                    jailed_perms.send_messages = True
+                    shitpost_perms.read_messages = False
+                else:
+                    # View channel or Read channel.
+                    jailed_perms.read_messages = False
+                    if isinstance(channel, discord.VoiceChannel):
+                        shitpost_perms.connect = False
+                    else:
+                        # Regular channel
+                        deny_send_and_react(shitpost_perms)
+
+                try:
+                    await channel.set_permissions(shitpost_role, overwrite=shitpost_perms, reason=reason)
+                    await channel.set_permissions(jailed_role, overwrite=jailed_perms, reason=reason)
+                except discord.HTTPException:
+                    failure += 1
+                else:
+                    success += 1
+            else:
+                skipped += 1
+
+        return success, failure, skipped
+
+    @config.command(name="setup")
+    @is_maintainer()
+    async def config_setup(self, ctx):
+        """Sets up the bot to ensure events are properly handled."""
+
+        # First, check if we even to configure the bot.
+        guild_id = ctx.guild.id
+        is_setup = await ctx.db.fetchval("SELECT is_configured FROM guild_config WHERE id = $1", guild_id)
+        if is_setup:
+            await ctx.send("This bot is already fully set up. "
+                           "If you believe this is a mistake,"
+                           " manually clear `is_configured` in `guild_config`.")
+            return
+
+        if self.currently_configuring.get(guild_id):
+            await ctx.send("The bot is currently being configured...")
+            return
+
+        # Release connection since we're going to wait for a bunch of input before actually committing.
+        await ctx.release()
+
+        # Let's kick things off with basic server information.
+        fmt = """
+        Let's start by configuring the basics. First things first: all channel, role and member
+        names are case sensitive. If you have a role named `Jailed` and another one named `jailed` 
+        and you specified 'jailed', the bot will try to resolve the latter. Keep this in mind while 
+        the bot is being set up. :)
+        """
+
+        acknowledgement = await ctx.prompt(textwrap.dedent(fmt))
+        if not acknowledgement:
+            await ctx.send("Aborting...", delete_after=3)
+            await ctx.message.delete()
+            return
+
+        # Lock command.
+        self.currently_configuring[guild_id] = True
+        messages = [ctx.message]
+        # Set up basic channel functions.
+        ch_cfg = await self._setup_channels(ctx, messages)
+        # Special case a few channels because they're needed for later
+        shitpost_chan = ch_cfg.shitpost_channel
+        jailed_chan = ch_cfg.jailed_channel
+        punish_chan = ch_cfg.punishment_channel
+
+        messages.append(await ctx.send("Awesome, you're making great progress. Next step, server roles!"))
+        shitpost_role, jailed_role = await self._setup_roles(ctx, messages)
+        # Configure all permission overwrites for the punishment role.
+        messages.append(await ctx.send("Roles, check! Setting up permission overwrites for punishment roles..."))
+        async with ctx.typing():
+            args = (ctx.guild, punish_chan, shitpost_chan, jailed_chan, shitpost_role, jailed_role)
+            success, failure, skipped = await self._setup_channel_overwrites(*args)
+            total = success + failure + skipped
+            await ctx.send(f"Attempted to update {total} channel permissions. "
+                           f"[Updated: {success}, Failed: {failure}, Skipped: {skipped}]")
+
+        # Configure VC channels.
+        vc_mapping = await self._setup_vc_mappings(ctx, messages)
+        messages.append(await ctx.send("Looks like that was it.\nStarting db transaction..."))
         # Create a tracker channel, if wanted.
         channel_id = None
-        if create_tracker_channel:
+        if ch_cfg.with_tracker:
             try:
                 # No connecting allowed.
                 overwrites = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False)}
@@ -325,19 +441,25 @@ class Config(Cog):
             except discord.HTTPException:
                 messages.append(await ctx.send("Hmm, could not create the tracker channel, sorry :("))
 
+        # Reacquire.
+        await ctx.acquire()
+        # Okay, we have a lot we need to commit now.
+        exc = ctx.db.execute
         # First, start with basic guild information
         query = """INSERT INTO guild_config 
                    (id, modlog_channel_id, mod_channel_id, default_channel_id, greeting, tracker_channel_id)
                    VALUES ($1, $2, $3, $4, $5, $6)"""
 
-        await exc(query, guild_id, log_channel.id, admin_channel.id,
-                  default_channel.id, default_greeting, channel_id)
+        await exc(query, guild_id, ch_cfg.log_channel, ch_cfg.admin_channel, ch_cfg.default_channel,
+                  ch_cfg.greeting, channel_id)
 
         # Next, punishments.
         query = """INSERT INTO punishment_config 
-                   (id, jailed_role_id, shitpost_role_id, jailed_channel_id, shitpost_channel_id)
-                   VALUES ($1, $2, $3, $4, $5)"""
-        await exc(query, guild_id, jailed_role.id, shitpost_role.id, jailed_channel.id, shitpost_channel.id)
+                   (id, jailed_role_id, shitpost_role_id, jailed_channel_id,
+                    shitpost_channel_id, punishment_channel_id)
+                   VALUES ($1, $2, $3, $4, $5, $6)"""
+
+        await exc(query, guild_id, jailed_role.id, shitpost_role.id, jailed_chan, shitpost_chan, punish_chan)
 
         # Vc mappings. Simple BULK COPY.
         to_insert = [(guild_id, vc.id, ch.id) for vc, ch in vc_mapping]
