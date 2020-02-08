@@ -1,12 +1,34 @@
+from typing import Optional
+
 import discord
 from discord.ext import commands
 
-from cogs.events import Event
+from cogs.events import EventConfig
+from cogs.reminders import Timer
 from cogs.utils import FutureTime, human_timedelta, is_mod
 from cogs.utils.meta_cog import Cog
 
 
+async def attempt_notification(member: discord.Member, text):
+    try:
+        await member.send(text)
+    except discord.HTTPException:
+        # Member has DMs off.
+        raise RuntimeError(f"Could not contact {member}.")
+
+
 class Punishments(Cog):
+    async def get_config(self, sendable) -> Optional[EventConfig]:
+        if (events := self.bot.get_cog("Event")) is None:
+            await sendable.send("Sorry, the event cog is currently not loaded...")
+            return
+
+        config = await events.get_guild_config(sendable.guild.id)
+        if config:
+            return config
+        else:
+            await sendable.send("Could not find config for some reason.")
+
     async def punish_and_get_channel(self, ctx, duration: FutureTime, member: discord.Member, type_):
         if ctx.message.channel.permissions_for(member).view_audit_log:
             # Moderator or admin. Let's avoid flashbacks of the great purge.
@@ -17,15 +39,8 @@ class Punishments(Cog):
             await ctx.send("Sorry, this is currently unavailable. Try again later?")
             return
 
-        events: Event
-        if (events := self.bot.get_cog("Event")) is None:
-            # Lazy. TODO: Fetch fallback?
-            await ctx.send("Sorry, the event cog is currently not loaded...")
-            return
-
-        config = await events.get_guild_config(ctx.guild.id)
+        config = await self.get_config(ctx)
         if not config:
-            await ctx.send("Could not find config for some reason.")
             return
 
         role_id = config.shitpost_role_id if type_ == "shitpost" else config.jailed_role_id
@@ -103,6 +118,44 @@ class Punishments(Cog):
 
         await mod.send("Automatic punishment release from timer created "
                        f"{timer.human_delta} for {member}.")
+
+        try:
+            # Piggyback off mod attributes.
+            config = await self.get_config(mod)
+            await config.punishment_channel.send(f"{member}'s punishment is now over!")
+        except Exception as e:
+            self.logger.warn(e)
+
+        try:
+            await attempt_notification(member, f"Your punishment on {guild.name} expired.")
+        except RuntimeError as e:
+            # Notify responsible mod.
+            await mod.send(e)
+
+    @commands.command(aliases=["cleanpost", "cleanjail"])
+    @is_mod()
+    async def free(self, ctx, *, member: discord.Member):
+        """Cancels a punishment of a member."""
+
+        reminder = self.bot.get_cog("Reminder")
+        if not reminder:
+            return await ctx.send("Sorry, this is currently unavailable. Load the `Reminder` cog.")
+
+        query = "SELECT * FROM reminders WHERE event ='punish' AND extra #>> '{args, 2}' = $1"
+        record = await ctx.db.fetchrow(query, str(member.id))
+
+        timer = Timer(record=record) if record else None
+        if not timer:
+            return await ctx.send(f"{member} is not currently punished.")
+
+        # Dispatch timer.
+        await reminder.call_timer(timer)
+        if reminder._current_timer and reminder._current_timer.id == timer.id:
+            # Cancel and re-run.
+            reminder._task.cancel()
+            reminder._task = self.bot.loop.create_task(reminder.dispatch_timers())
+
+        await ctx.send(f"Punishment for {member} was successfully cancelled.")
 
 
 setup = Punishments.setup

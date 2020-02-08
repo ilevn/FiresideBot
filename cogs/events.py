@@ -46,7 +46,8 @@ class EventConfig:
     # These slots match with our db columns, which is why the assignment works.
     __slots__ = ('bot', 'id', 'modlog_channel_id', 'mod_channel_id', 'default_channel_id',
                  'greeting', 'shitpost_channel_id', 'jailed_channel_id', 'shitpost_role_id',
-                 'jailed_role_id', 'mappings', 'tracker_channel_id', 'poll_channel_id')
+                 'jailed_role_id', 'mappings', 'tracker_channel_id', 'poll_channel_id',
+                 'punishment_channel_id')
 
     @classmethod
     async def from_record(cls, record, bot, vc_mappings):
@@ -86,6 +87,11 @@ class EventConfig:
 
         guild = self.bot.get_guild(self.id)
         return guild and guild.get_channel(self.tracker_channel_id)
+
+    @property
+    def punishment_channel(self):
+        guild = self.bot.get_guild(self.id)
+        return guild and guild.get_channel(self.punishment_channel_id)
 
 
 class Event(Cog):
