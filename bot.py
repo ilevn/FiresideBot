@@ -13,6 +13,7 @@ from discord.ext import commands
 from discord.ext.commands import Bot
 from logbook import StreamHandler
 from logbook.compat import redirect_logging
+from sentry_sdk import init as sen_init, configure_scope as sen_configure_scope, capture_exception
 
 import config
 from cogs.utils.context import Context
@@ -43,6 +44,10 @@ class FiresideBot(Bot):
         # Start the game status cycle task.
         self.status = cycle(["Communism", "With Stalin", "and Chilling"])
         self.loop.create_task(self.change_status())
+        # Support for sentry.
+        self.sentry = None
+        if sentry_dsn := config.sentry_dsn:
+            self.sentry = sen_init(dsn=sentry_dsn, max_breadcrumbs=0)
 
         if self.dev_mode:
             self.command_prefix = config.dev_prefix
@@ -116,8 +121,38 @@ class FiresideBot(Bot):
                 self.logger.critical(f'In {ctx.command.qualified_name}:')
                 traceback.print_tb(original.__traceback__)
                 self.logger.critical(f'{original.__class__.__name__}: {original}')
+                await ctx.channel.send("Hmmm, this shouldn't normally happen."
+                                       " This incident has been logged and reported!")
+
+            if self.sentry is not None:
+                data = {"Guild": ctx.guild,
+                        "Channel": ctx.channel,
+                        "Command": ctx.message.content,
+                        "Invoked by": "<id='{0.id}' name='{0.name}' discriminator='{0.discriminator}'"
+                                      " nick='{0.display_name}'>".format(ctx.author)
+                        }
+
+                with sen_configure_scope() as scope:
+                    scope.set_context("Invoker information", data)
+                    capture_exception(original)
+
         elif isinstance(error, commands.ArgumentParsingError) or self.dev_mode:
             await ctx.send(error)
+
+    async def on_error(self, event, *args, **kwargs):
+        if self.sentry is not None:
+            # Get additional information in regard to our event.
+            data = {
+                "Event": event,
+                **{f"Argument {i}": arg for i, arg in enumerate(args, 1)}
+            }
+
+            with sen_configure_scope() as scope:
+                scope.set_context("Event information", data)
+                # sys.exc_info() is used under the hood.
+                capture_exception()
+        else:
+            traceback.print_exc()
 
     def run(self):
         try:

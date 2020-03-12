@@ -1,15 +1,21 @@
-import time
 import traceback
 
 from discord.ext import commands
-from discord.ext.commands import is_owner
 
+from cogs.utils import checks
 from cogs.utils.meta_cog import Cog
 
 
 class Admin(Cog):
+
+    async def cog_check(self, ctx):
+        return await checks.maintainer_check(ctx)
+
+    async def cog_command_error(self, ctx, error):
+        if isinstance(error, commands.CheckFailure):
+            await ctx.send(":x: You're not a maintainer")
+
     @commands.command()
-    @is_owner()
     async def load(self, ctx, *, extension):
         """Load an extension"""
         try:
@@ -21,7 +27,6 @@ class Admin(Cog):
             await ctx.send("\N{OK HAND SIGN}")
 
     @commands.command()
-    @is_owner()
     async def unload(self, ctx, extension):
         """Unload an extension."""
         try:
@@ -32,7 +37,6 @@ class Admin(Cog):
             await ctx.send("\N{OK HAND SIGN}")
 
     @commands.command()
-    @is_owner()
     async def reload(self, ctx, *, extension):
         """Reload an extension. """
         try:
@@ -41,6 +45,10 @@ class Admin(Cog):
             await ctx.send(f"{e.__class__.__name__}: {e}")
         else:
             await ctx.send("\N{OK HAND SIGN}")
+
+    @commands.command()
+    async def test_sentry(self, ctx):
+        return 0 / 0
 
 
 setup = Admin.setup
