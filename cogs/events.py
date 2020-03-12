@@ -47,15 +47,15 @@ class EventConfig:
     __slots__ = ('bot', 'id', 'modlog_channel_id', 'mod_channel_id', 'default_channel_id',
                  'greeting', 'shitpost_channel_id', 'jailed_channel_id', 'shitpost_role_id',
                  'jailed_role_id', 'mappings', 'tracker_channel_id', 'poll_channel_id',
-                 'punishment_channel_id')
+                 'punishment_channel_id', 'verification_channel_id', 'verification_role_id')
 
     @classmethod
     async def from_record(cls, record, bot, vc_mappings):
         self = cls()
 
         self.bot = bot
+        # vc channel -> txt channel
         self.mappings = dict(vc_mappings)
-        # Thanks python for allowing this.
         for val in EventConfig.__slots__:
             actual_val = record.get(val, _SENTINEL)
             if actual_val is _SENTINEL:
@@ -65,33 +65,36 @@ class EventConfig:
 
         return self
 
+    def _resolve_channel(self, channel_id):
+        guild = self.bot.get_guild(self.id)
+        return guild and guild.get_channel(channel_id)
+
     @property
     def modlog(self):
-        guild = self.bot.get_guild(self.id)
-        return guild and guild.get_channel(self.modlog_channel_id)
+        return self._resolve_channel(self.mod_channel_id)
 
     @property
     def mod_channel(self):
-        guild = self.bot.get_guild(self.id)
-        return guild and guild.get_channel(self.mod_channel_id)
+        return self._resolve_channel(self.mod_channel_id)
 
     @property
     def default_channel(self):
-        guild = self.bot.get_guild(self.id)
-        return guild and guild.get_channel(self.default_channel_id)
+        return self._resolve_channel(self.default_channel_id)
 
     @property
     def tracker_channel(self):
         if not self.tracker_channel_id:
             return
 
-        guild = self.bot.get_guild(self.id)
-        return guild and guild.get_channel(self.tracker_channel_id)
+        return self._resolve_channel(self.tracker_channel_id)
 
     @property
     def punishment_channel(self):
-        guild = self.bot.get_guild(self.id)
-        return guild and guild.get_channel(self.punishment_channel_id)
+        return self._resolve_channel(self.punishment_channel_id)
+
+    @property
+    def verification_channel(self):
+        return self._resolve_channel(self.verification_channel_id)
 
 
 class Event(Cog):
@@ -125,7 +128,7 @@ class Event(Cog):
         guild = member.guild
         config = await self.get_guild_config(guild.id)
 
-        if is_outside_voice(before, ) and is_inside_voice(after):
+        if is_outside_voice(before) and is_inside_voice(after):
             # Joined channel.
             if channel_id := config.mappings.get(after.channel.id):
                 channel = guild.get_channel(channel_id)
