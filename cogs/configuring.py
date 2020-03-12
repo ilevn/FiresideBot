@@ -1,5 +1,6 @@
 import asyncio
 import textwrap
+import weakref
 from collections import namedtuple
 from typing import Optional
 
@@ -7,9 +8,8 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import TextChannelConverter, BadArgument, RoleConverter, VoiceChannelConverter
 
-from cogs.utils import db
-from cogs.utils.checks import is_maintainer
-from cogs.utils.formatting import Plural
+from cogs.utils import db, is_maintainer, Plural
+from cogs.utils.command_lock import CLock, CommandIsLocked
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import Pages
 
@@ -23,7 +23,7 @@ class GuildConfig(db.Table, table_name='guild_config'):
     mod_channel_id = db.DiscordIDColumn()
     # Default channel on the server. Probably #general in most cases.
     default_channel_id = db.DiscordIDColumn()
-    # Bot greeting for ON_MEMBER_ADD
+    # Bot greeting for ON_MEMBER_ADD.
     greeting = db.Column(db.String)
     # Sentinel to check whether the bot is properly set up.
     is_configured = db.Column(db.Boolean, default=False)
@@ -31,6 +31,10 @@ class GuildConfig(db.Table, table_name='guild_config'):
     tracker_channel_id = db.DiscordIDColumn(nullable=True)
     # The default poll channel.
     poll_channel_id = db.DiscordIDColumn()
+    # The verification role for the server.
+    verification_role_id = db.DiscordIDColumn()
+    # The verification channel for the server.
+    verification_channel_id = db.DiscordIDColumn()
 
 
 class PunishmentConfig(db.Table, table_name='punishment_config'):
@@ -172,14 +176,13 @@ class RoleRange(commands.Converter):
 
 _Channels = namedtuple("_Channels",
                        "with_tracker greeting default_channel admin_channel "
-                       "log_channel punishment_channel shitpost_channel jailed_channel")
+                       "log_channel punishment_channel shitpost_channel jailed_channel verification_channel")
 
 
 class Config(Cog):
     def __init__(self, bot):
         super().__init__(bot)
-        # guild -> bool
-        self.currently_configuring = {}
+        self.currently_configuring = weakref.WeakValueDictionary()
 
     @staticmethod
     def invalidate_guild_config(ctx):
@@ -212,7 +215,14 @@ class Config(Cog):
         if not default_channel:
             return
 
-        messages.append(await ctx.send(f"The default channel is going to be {default_channel.mention}."))
+        messages.append(await ctx.send(f"The default greeting channel is going to be {default_channel.mention}."))
+
+        question = "Where should users be prompted for verification?"
+        verification_channel = await convert_channel(ctx, messages, question)
+        if not verification_channel:
+            return
+
+        messages.append(await ctx.send(f"The default verification is going to be {default_channel.mention}."))
 
         # Admin channel
         question = "Now, please provide the admin channel of the server in the same fashion as before."
@@ -253,7 +263,8 @@ class Config(Cog):
         messages.append(await ctx.send(f"Okay, jailed people will be sent to {jailed_channel.mention}."))
 
         return _Channels(create_tracker_channel, default_greeting, default_channel.id, admin_channel.id,
-                         log_channel.id, punishment_channel.id, shitpost_channel.id, jailed_channel.id)
+                         log_channel.id, punishment_channel.id, shitpost_channel.id, jailed_channel.id,
+                         verification_channel.id)
 
     @staticmethod
     async def _setup_roles(ctx, messages):
@@ -272,7 +283,14 @@ class Config(Cog):
         else:
             jailed_role = await manually_create_role(ctx, "Jailed", messages)
 
-        return shitpost_role, jailed_role
+        # Jailed role.
+        has_role = await ctx.prompt("Do you already have a verification role?")
+        if has_role:
+            verification_role = await has_role_flow_create(ctx, messages, "Verification")
+        else:
+            verification_role = await manually_create_role(ctx, "Verification", messages)
+
+        return shitpost_role, jailed_role, verification_role
 
     @staticmethod
     async def _setup_vc_mappings(ctx, messages):
@@ -318,15 +336,21 @@ class Config(Cog):
     # noinspection PyDunderSlots,PyUnresolvedReferences,PyTypeChecker
     @staticmethod
     async def _setup_channel_overwrites(guild, punish_channel_id, shitpost_channel_id,
-                                        jailed_channel_id, shitpost_role, jailed_role):
-        """Sets up all channel overwrites for the server."""
+                                        jailed_channel_id, shitpost_role, jailed_role,
+                                        verification_channel_id, verification_role):
 
         def deny_send_and_react(overwrites):
             overwrites.send_messages = False
             overwrites.add_reactions = False
 
         success, skipped, failure = 0, 0, 0
-        reason = "Automatic server setup"
+        reason = "Automatic server setup."
+
+        # Jailed -> R:Jailed & Punishments
+        # Shitpost -> R:All; W:Shitpost
+        # No one has reactions.
+        # Verification -> RW:Verification
+        # @everyone -> R:everything except Jailed & Verification
 
         for channel in guild.channels:
             if not isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
@@ -336,19 +360,21 @@ class Config(Cog):
             if perms.manage_roles:
                 jailed_perms = channel.overwrites_for(jailed_role)
                 shitpost_perms = channel.overwrites_for(shitpost_role)
-                # Jailed -> R:Jailed & Punishments
-                # Shitpost -> R:All; W:Shitpost
-                # No one has reactions.
+                everyone_perms = channel.overwrites_for(guild.default_role)
+                verification_perms = channel.overwrites_for(verification_role)
+
                 if (channel_id := channel.id) == punish_channel_id:
-                    # These should theoretically be the norm
-                    deny_send_and_react(shitpost_perms)
-                    deny_send_and_react(jailed_perms)
+                    # This should theoretically be given.
+                    deny_send_and_react(everyone_perms)
                 elif channel_id == shitpost_channel_id:
                     shitpost_perms.send_messages = True
-                    jailed_perms.send_messages = False
+                    jailed_perms.read_messages = False
                 elif channel_id == jailed_channel_id:
                     jailed_perms.send_messages = True
-                    shitpost_perms.read_messages = False
+                    everyone_perms.send_messages = False
+                elif channel_id == verification_channel_id:
+                    everyone_perms.read_messages = False
+                    verification_perms.send_messages = True
                 else:
                     # View channel or Read channel.
                     jailed_perms.read_messages = False
@@ -359,8 +385,11 @@ class Config(Cog):
                         deny_send_and_react(shitpost_perms)
 
                 try:
+                    # This is pretty awful but discord won't let us bulk edit channel perms.
                     await channel.set_permissions(shitpost_role, overwrite=shitpost_perms, reason=reason)
                     await channel.set_permissions(jailed_role, overwrite=jailed_perms, reason=reason)
+                    await channel.set_permissions(verification_role, overwrite=verification_perms, reason=reason)
+                    await channel.set_permissions(guild.default_role, overwrite=everyone_perms, reason=reason)
                 except discord.HTTPException:
                     failure += 1
                 else:
@@ -370,9 +399,7 @@ class Config(Cog):
 
         return success, failure, skipped
 
-    @config.command(name="setup")
-    @is_maintainer()
-    async def config_setup(self, ctx):
+    async def _config_setup(self, ctx):
         """Sets up the bot to ensure events are properly handled."""
 
         # First, check if we even to configure the bot.
@@ -381,11 +408,8 @@ class Config(Cog):
         if is_setup:
             await ctx.send("This bot is already fully set up. "
                            "If you believe this is a mistake,"
-                           " manually clear `is_configured` in `guild_config`.")
-            return
-
-        if self.currently_configuring.get(guild_id):
-            await ctx.send("The bot is currently being configured...")
+                           " manually clear `is_configured` in `guild_config`"
+                           " and reload the Event cog.")
             return
 
         # Release connection since we're going to wait for a bunch of input before actually committing.
@@ -405,22 +429,28 @@ class Config(Cog):
             await ctx.message.delete()
             return
 
-        # Lock command.
-        self.currently_configuring[guild_id] = True
         messages = [ctx.message]
         # Set up basic channel functions.
         ch_cfg = await self._setup_channels(ctx, messages)
-        # Special case a few channels because they're needed for later
+        if not ch_cfg:
+            await ctx.send("Aborting...", delete_after=3)
+            await ctx.channel.delete_messages(messages)
+            return
+
+        # Special case a few channels because they're needed later.
         shitpost_chan = ch_cfg.shitpost_channel
         jailed_chan = ch_cfg.jailed_channel
         punish_chan = ch_cfg.punishment_channel
+        verif_chan = ch_cfg.verification_channel
 
         messages.append(await ctx.send("Awesome, you're making great progress. Next step, server roles!"))
-        shitpost_role, jailed_role = await self._setup_roles(ctx, messages)
+        shitpost_role, jailed_role, verification_role = await self._setup_roles(ctx, messages)
         # Configure all permission overwrites for the punishment role.
         messages.append(await ctx.send("Roles, check! Setting up permission overwrites for punishment roles..."))
+
         async with ctx.typing():
-            args = (ctx.guild, punish_chan, shitpost_chan, jailed_chan, shitpost_role, jailed_role)
+            args = (ctx.guild, punish_chan, shitpost_chan, jailed_chan, shitpost_role, jailed_role,
+                    verif_chan, verification_role)
             success, failure, skipped = await self._setup_channel_overwrites(*args)
             total = success + failure + skipped
             await ctx.send(f"Attempted to update {total} channel permissions. "
@@ -443,15 +473,15 @@ class Config(Cog):
 
         # Reacquire.
         await ctx.acquire()
-        # Okay, we have a lot we need to commit now.
         exc = ctx.db.execute
         # First, start with basic guild information
         query = """INSERT INTO guild_config 
-                   (id, modlog_channel_id, mod_channel_id, default_channel_id, greeting, tracker_channel_id)
-                   VALUES ($1, $2, $3, $4, $5, $6)"""
+                   (id, modlog_channel_id, mod_channel_id, default_channel_id, greeting, tracker_channel_id,
+                   verification_channel_id, verification_role_id)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"""
 
         await exc(query, guild_id, ch_cfg.log_channel, ch_cfg.admin_channel, ch_cfg.default_channel,
-                  ch_cfg.greeting, channel_id)
+                  ch_cfg.greeting, channel_id, verif_chan, verification_role.id)
 
         # Next, punishments.
         query = """INSERT INTO punishment_config 
@@ -470,10 +500,19 @@ class Config(Cog):
         await exc("UPDATE guild_config SET is_configured = TRUE WHERE id = $1", guild_id)
         await ctx.channel.delete_messages(messages)
         await ctx.send("Done! Everything should work fine now :)")
-        # Could be a potential dead-lock. Maybe consider using a sophomore instead.
-        self.currently_configuring[guild_id] = False
         # Refresh guild config.
         self.invalidate_guild_config(ctx)
+
+    @config.command(name="setup")
+    @is_maintainer()
+    async def config_setup(self, ctx):
+        if (lock := self.currently_configuring.get(ctx.guild.id)) is None:
+            self.currently_configuring[ctx.guild.id] = lock = CLock()
+        try:
+            with lock:
+                await self._config_setup(ctx)
+        except CommandIsLocked:
+            await ctx.send(f"This command is currently in use.")
 
     async def _bulk_add_roles(self, ctx, roles, category=None):
         async with ctx.db.transaction():
