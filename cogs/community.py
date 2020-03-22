@@ -55,7 +55,7 @@ class Community(Cog):
         if message.channel.id != POLL_CHANNEL:
             return
 
-        if not message.content.startswith("Poll: "):
+        if not message.content.lower().startswith("poll: "):
             await message.channel.send("Bad poll format. Please make sure your poll starts with `Poll: `",
                                        delete_after=8)
             await message.delete(delay=7)
