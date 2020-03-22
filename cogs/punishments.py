@@ -7,6 +7,7 @@ from cogs.events import EventConfig
 from cogs.reminders import Timer
 from cogs.utils import FutureTime, human_timedelta, is_mod
 from cogs.utils.meta_cog import Cog
+from cogs.utils.punishment import Punishment, ActionType
 
 
 async def attempt_notification(member: discord.Member, text):
@@ -35,7 +36,7 @@ class Punishments(Cog):
         else:
             await sendable.send("Could not find config for some reason.")
 
-    async def punish_and_get_channel(self, ctx, duration: FutureTime, member: discord.Member, type_):
+    async def punish_and_get_channel(self, ctx, duration: FutureTime, reason, member: discord.Member, type_):
         if ctx.message.channel.permissions_for(member).view_audit_log:
             # Moderator or admin. Let's avoid flashbacks of the great purge.
             await ctx.send("\U0000274c I cannot punish a moderator or admin!")
@@ -66,7 +67,8 @@ class Punishments(Cog):
         roles = list(set(r.id for r in member.roles) - managed_roles)
 
         await reminder.create_timer(duration.dt, 'punish', ctx.guild.id, ctx.author.id,
-                                    member.id, roles, connection=ctx.db)
+                                    member.id, roles, type_, connection=ctx.db)
+        duration_delta = human_timedelta(duration.dt)
 
         # This is a work-around for discord's awful "nitrobooster" feature.
         still_apply = managed_roles.union({role_id})
@@ -75,16 +77,21 @@ class Punishments(Cog):
         except discord.Forbidden:
             await ctx.send("\N{CROSS MARK} I do not have permission to edit this member!")
         else:
-            await ctx.send(f"Punished {member.name} for {human_timedelta(duration.dt)}.")
+            await ctx.send(f"Punished {member.name} for {duration_delta}.")
 
         channel_id = config.shitpost_channel_id if type_ == "shitpost" else config.jailed_channel_id
+        action_type = ActionType.SHITPOST if type_ == "shitpost" else ActionType.JAIL
+        # Dispatch our custom punishment event.
+        punishment = Punishment(ctx.guild, member, ctx.author, action_type, reason, duration_delta)
+        self.bot.dispatch("punishment_add", punishment)
+
         return ctx.guild.get_channel(channel_id)
 
     # NOTE: The mod check defaults to `manage_guild == True` atm.
     # We probably want to change that in the future.
     @commands.command(aliases=["jail"])
     @is_mod()
-    async def shitpost(self, ctx, duration: FutureTime, *, member: discord.Member):
+    async def shitpost(self, ctx, duration: FutureTime, member: discord.Member, *, reason=None):
         """Temporarily locks a user out of every single channel this guild has.
 
         The duration can be a short time form, e.g. 12d or a more human
@@ -95,7 +102,7 @@ class Punishments(Cog):
         """
 
         type_ = ctx.invoked_with
-        channel = await self.punish_and_get_channel(ctx, duration, member, type_)
+        channel = await self.punish_and_get_channel(ctx, duration, reason, member, type_)
         if not channel:
             return
 
@@ -104,7 +111,7 @@ class Punishments(Cog):
 
     @Cog.listener()
     async def on_punish_timer_complete(self, timer):
-        guild_id, mod_id, member_id, roles = timer.args
+        guild_id, mod_id, member_id, roles, type_ = timer.args
 
         guild = self.bot.get_guild(guild_id)
         if guild is None:
@@ -122,21 +129,22 @@ class Punishments(Cog):
         if mod is None:
             return
 
-        await mod.send("Automatic punishment release from timer created "
-                       f"{timer.human_delta} for {member}.")
-
+        config = await self.get_config(mod)
         try:
-            # Piggyback off mod attributes.
-            config = await self.get_config(mod)
-            await config.punishment_channel.send(f"{member}'s punishment is now over!")
-        except Exception as e:
-            self.logger.warn(e)
+            await mod.send("Automatic punishment release from timer created "
+                           f"{timer.human_delta} for {member}.")
+        except discord.Forbidden:
+            if config:
+                await config.mod_channel.send(f"{mod.mention} {member}'s punishment is now over!")
+
+        action_type = ActionType.SHITPOST if type_ == "shitpost" else ActionType.JAIL
+        punishment = Punishment(guild, member, mod, action_type)
+        self.bot.dispatch("punishment_remove", punishment)
 
         try:
             await attempt_notification(member, f"Your punishment on {guild.name} expired.")
-        except RuntimeError as e:
-            # Notify responsible mod.
-            await mod.send(e)
+        except RuntimeError:
+            pass
 
     @commands.command(aliases=["cleanpost", "cleanjail"])
     @is_mod()
@@ -163,5 +171,15 @@ class Punishments(Cog):
 
         await ctx.send(f"Punishment for {member} was successfully cancelled.")
 
+
+"""
+Punishments:
+- Ban -> user, mod, reason, duration
+- Kick -> see above
+- Shitposted -> see above
+- Jailed -> see above
+
+== Type, target, mod, reason, duration
+"""
 
 setup = Punishments.setup

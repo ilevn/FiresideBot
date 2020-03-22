@@ -13,6 +13,7 @@ from discord.ext import commands
 from cogs.utils import db, Plural, human_timedelta, is_mod
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, Pages
+from cogs.utils.punishment import Punishment, ActionType
 
 
 class RemovalType(IntEnum):
@@ -216,8 +217,8 @@ class Removals(Cog):
             embed.add_field(name="Profile", value=member.mention)
 
         embed.add_field(name="ID", value=member.id)
-        responsible_mod = guild.get_member(entry.moderator) or "No responsible moderator"
-        embed.add_field(name="Moderator", value=responsible_mod, inline=False)
+        responsible_mod = guild.get_member(entry.moderator)
+        embed.add_field(name="Moderator", value=responsible_mod or "No responsible moderator", inline=False)
         # Create placeholder in case no reason was provided.
         prefix = self.bot.command_prefix
         reason_place_holder = f"No reason yet. Provide one with `{prefix}reason {record[0]} <reason>`."
@@ -228,6 +229,10 @@ class Removals(Cog):
         msg = await modlog.send(embed=embed)
         query = """UPDATE removals SET message_id = $1 WHERE id = $2"""
         await self.bot.pool.execute(query, msg.id, record[0])
+        # Also dispatch to #punishment channel.
+        action_type = ActionType.BAN if type_ == RemovalType.BAN else ActionType.UNBAN
+        punishment = Punishment(guild, member, responsible_mod, action_type, entry.reason or "No reason provided.")
+        self.bot.dispatch("punishment_add" if action_type == ActionType.BAN else "punishment_remove", punishment)
 
         if type_ == RemovalType.BAN:
             # Set marker to avoid event clashing with KICK.
@@ -239,7 +244,7 @@ class Removals(Cog):
             self._locks[guild.id] = lock = asyncio.Lock(loop=self.bot.loop)
 
         async with lock:
-            if member.id in self.known_removals:
+            if member.id in self.known_removals and type_ != RemovalType.UNBAN:
                 # Banned/unbanned with command. No further action required.
                 self.known_removals.remove(member.id)
                 return
@@ -336,6 +341,8 @@ class Removals(Cog):
             # Add banned users to removal list and ban.
             for user in actual_users:
                 self.known_removals.add(user.id)
+                punishment = Punishment(ctx.guild, user, ctx.author, ActionType.BAN, reason)
+                self.bot.dispatch("punishment_add", punishment)
                 await ctx.guild.ban(user, reason=reason)
 
             pages = Pages(ctx, entries=[f"{user} - (`{user.id}`)" for user in actual_users])
@@ -346,6 +353,8 @@ class Removals(Cog):
             except CannotPaginate as e:
                 await ctx.send(e)
 
+    # Maintainer note:
+    # Removal commands currently don't get logged. Change later?
     @commands.command()
     @is_mod()
     async def ban(self, ctx, member: discord.Member, *, reason: ActionReason = None):
@@ -363,6 +372,8 @@ class Removals(Cog):
         await ctx.db.execute(query, member.id, ctx.author.id, reason, ctx.guild.id, b_val)
 
         await member.ban(delete_message_days=7, reason=reason)
+        punishment = Punishment(ctx.guild, member, ctx.author, ActionType.BAN, reason)
+        self.bot.dispatch("punishment_add", punishment)
         self.known_removals.add(member.id)
         await ctx.send('\N{OK HAND SIGN}')
 
@@ -384,6 +395,8 @@ class Removals(Cog):
 
         await member.kick(reason=reason)
         self.known_removals.add(member.id)
+        punishment = Punishment(ctx.guild, member, ctx.author, ActionType.KICK, reason)
+        self.bot.dispatch("punishment_add", punishment)
         await ctx.send('\N{OK HAND SIGN}')
 
     @commands.command()
@@ -398,6 +411,8 @@ class Removals(Cog):
 
         await member.unban(reason=reason)
         self.known_removals.add(member.id)
+        punishment = Punishment(ctx.guild, member, ctx.author, ActionType.UNBAN, reason)
+        self.bot.dispatch("punishment_remove", punishment)
         await ctx.send('\N{OK HAND SIGN}')
 
     @commands.group(aliases=["removal"], invoke_without_command=True)

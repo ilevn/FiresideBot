@@ -12,6 +12,7 @@ from cogs.utils import human_timedelta, Plural, embed_paginate
 from cogs.utils.cache import cache, ExpiringCache
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import BulkDeletePaginator
+from cogs.utils.punishment import Punishment
 
 
 def is_outside_voice(state):
@@ -380,6 +381,40 @@ class Event(Cog):
 
             # Re-raise for on_error
             raise discord.DiscordException("Bulk delete failed") from e
+
+    @Cog.listener()
+    async def on_punishment_add(self, punishment: Punishment):
+        config = await self.get_guild_config(punishment.guild.id)
+        if not config:
+            return
+
+        embed = discord.Embed(title=f"\N{WARNING SIGN} New {punishment.type.title} punishment",
+                              colour=discord.Colour.red())
+
+        target = getattr(punishment.target, "display_name", punishment.target)
+        embed.add_field(name="Affected member", value=target, inline=False)
+        moderator = getattr(punishment.moderator, "display_name", "Unknown moderator")
+        embed.add_field(name="Responsible moderator", value=moderator, inline=False)
+        embed.add_field(name="Reason", value=punishment.reason or "No reason provided.", inline=False)
+        embed.add_field(name="Duration", value=punishment.duration, inline=False)
+        embed.timestamp = datetime.utcnow()
+
+        await config.punishment_channel.send(embed=embed)
+
+    @Cog.listener()
+    async def on_punishment_remove(self, punishment: Punishment):
+        config = await self.get_guild_config(punishment.guild.id)
+        if not config:
+            return
+
+        embed = discord.Embed(title=f"\N{SHAMROCK} {punishment.type.title} punishment lifted",
+                              colour=discord.Colour.green())
+        target = getattr(punishment.target, "display_name", punishment.target)
+        embed.add_field(name="Affected member", value=target, inline=False)
+        embed.add_field(name="Responsible moderator", value=punishment.moderator.display_name, inline=False)
+        embed.timestamp = datetime.utcnow()
+
+        await config.punishment_channel.send(embed=embed)
 
 
 setup = Event.setup
