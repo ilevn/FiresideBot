@@ -57,8 +57,6 @@ class PunishmentConfig(db.Table, table_name='punishment_config'):
 class VCChannelConfig(db.Table, table_name='vc_channel_config'):
     # The guild id.
     id = db.Column(db.Integer(big=True), primary_key=True)
-    # The guild id.
-    guild_id = db.DiscordIDColumn()
     # The voice channel id.
     vc_channel_id = db.DiscordIDColumn()
     # The corresponding voice room id.
@@ -509,7 +507,7 @@ class Config(Cog):
 
         # Vc mappings. Simple BULK COPY.
         to_insert = [(guild_id, vc.id, ch.id) for vc, ch in vc_mapping]
-        await ctx.db.copy_records_to_table("vc_channel_config", columns=("guild_id", "vc_channel_id", "channel_id"),
+        await ctx.db.copy_records_to_table("vc_channel_config", columns=("id", "vc_channel_id", "channel_id"),
                                            records=to_insert)
 
         # Lastly, set our sentinel.
