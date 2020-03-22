@@ -796,7 +796,8 @@ class Table(metaclass=TableMeta):
             if col.primary_key:
                 primary_keys.append(col.name)
 
-        column_creations.append(f'PRIMARY KEY ({", ".join(primary_keys)})')
+        if primary_keys:
+            column_creations.append(f'PRIMARY KEY ({", ".join(primary_keys)})')
         builder.append(f'({", ".join(column_creations)})')
         statements.append(' '.join(builder) + ';')
 

@@ -71,7 +71,7 @@ class EventConfig:
 
     @property
     def modlog(self):
-        return self._resolve_channel(self.mod_channel_id)
+        return self._resolve_channel(self.modlog_channel_id)
 
     @property
     def mod_channel(self):
@@ -150,9 +150,37 @@ class Event(Cog):
         # Update the tracker with the latest server size.
         await config.tracker_channel.edit(name=f"Members: {len(guild.members)}")
 
-    @Cog.listener()
-    async def on_member_remove(self, member):
-        await self.update_tracker(member.guild)
+    async def _handle_rejoin(self, state, embed, member):
+        embed.title = f'\U000026a0 User {member.name} re-joined the server!'
+        if state.roles:
+            try:
+                await member.add_roles(*state.roles, atomic=False, reason="Role-state restore")
+                self.logger.info(f"Restoring role-state for {member} with {len(state.roles)} previous roles.")
+            except (discord.HTTPException, discord.Forbidden):
+                pass
+
+        if state.muted:
+            self.logger.info(f"Scheduling mute for {member}.")
+            self._pending_mute[member.guild.id].add(member.id)
+
+        embed.add_field(name="State information",
+                        value=f"Restored roles: {len(state.roles)}\nMuted: {'Yes' if state.muted else 'No'}",
+                        inline=False)
+
+        return embed
+
+    @staticmethod
+    def format_greeting(member, greeting):
+        valid_templates = {
+            "name": member.name,
+            "name_mention": member.mention,
+            "server": member.guild.name
+        }
+
+        def sub(m):
+            return valid_templates.get(m[1], m[0])
+
+        return re.sub(r"\$(\w+)", sub, greeting)
 
     @Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -169,27 +197,14 @@ class Event(Cog):
 
         # Try to restore their previous state.
         # This only applies in case they rejoined within an hour.
-        state: StateInformation = self._member_state[member.guild.id].fetch(member.id)
+        state = self._member_state[member.guild.id].fetch(member.id)
         if state:
-            embed.title = f'\U000026a0 User {member.name} re-joined the server!'
-            if state.roles:
-                try:
-                    await member.add_roles(*state.roles, atomic=False, reason="Role-state restore")
-                    self.logger.info(f"Restoring role-state for {member} with {len(state.roles)} previous roles.")
-                except (discord.HTTPException, discord.Forbidden):
-                    pass
-
-            if state.muted:
-                self.logger.info(f"Scheduling mute for {member}.")
-                self._pending_mute[member.guild.id].add(member.id)
-
-            embed.add_field(name="State information",
-                            value=f"Restored roles: {len(state.roles)}\nMuted: {'Yes' if state.muted else 'No'}",
-                            inline=False)
-
+            embed = await self._handle_rejoin(state, embed, member)
         else:
             # Probably not a rejoin, though that's not certain.
             embed.title = f'\U0001f44b User {member.name} joined the server!'
+            # Give them the `Unverified` role.
+            await member.add_roles(discord.Object(id=config.verification_role_id))
 
             delta = (member.joined_at - member.created_at).total_seconds() // 60
             if delta < 10:
@@ -197,8 +212,8 @@ class Event(Cog):
                 embed.add_field(name="\U00002757 Young account",
                                 value=f"Created {human_timedelta(member.created_at)}")
 
-                if config.default_channel and config.greeting:
-                    await config.default_channel.send(config.greeting.format(member.mention))
+            if config.default_channel and config.greeting:
+                await config.default_channel.send(self.format_greeting(member, config.greeting))
 
         if config.modlog:
             ping = "@here" if state and state.muted else ""
@@ -216,6 +231,8 @@ class Event(Cog):
         _logs = await member.guild.audit_logs(action=discord.AuditLogAction.member_update).flatten()
         potentially_muted = next((x.after.mute for x in _logs if getattr(x.after, "mute", None)
                                   is not None and x.target.id == member.id), False)
+
+        await self.update_tracker(member.guild)
 
         # Exclude @everyone
         mem_roles = member.roles[1:]
@@ -343,7 +360,7 @@ class Event(Cog):
 
         # Manually load modlog.
         config = await self.get_guild_config(first_message.guild.id)
-        if not (config and config.modlog_id):
+        if not (config and config.modlog_channel_id):
             return
 
         paginator = BulkDeletePaginator(channel=config.modlog, entries=actual_messages,

@@ -156,6 +156,12 @@ class Removals(Cog):
         self.known_removals = set()
         self._locks = weakref.WeakValueDictionary()
 
+    async def cog_check(self, ctx):
+        if ctx.guild is None:
+            return False
+
+        return True
+
     @staticmethod
     async def get_potential_removal_entry(guild: discord.Guild, user, type_: RemovalType):
         # Discord is inconsistent.
@@ -246,7 +252,6 @@ class Removals(Cog):
 
     @Cog.listener()
     async def on_member_unban(self, guild, user: discord.User):
-        print("Triggered")
         await self.parse_event_with_lock(guild, user, RemovalType.UNBAN, "\U0001f33b Unban")
 
     @Cog.listener()

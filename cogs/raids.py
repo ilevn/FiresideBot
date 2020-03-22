@@ -116,6 +116,12 @@ class RaidControl(Cog):
         self._spam_checker = defaultdict(SpamChecker)
         self._disable_lock = asyncio.Lock(loop=bot.loop)
 
+    async def cog_check(self, ctx):
+        if ctx.guild is None:
+            return False
+
+        return True
+
     @cache()
     async def get_raid_config(self, guild_id):
         query = """SELECT * FROM guild_raid_config WHERE id=$1;"""

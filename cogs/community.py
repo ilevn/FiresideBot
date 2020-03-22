@@ -7,7 +7,6 @@ from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, RolePoolPages
 
 
-# TODO: Add to config setup command
 class Roles(db.Table):
     id = db.PrimaryKeyColumn()
     # The guild id.
@@ -22,6 +21,12 @@ class Community(Cog):
     def __init__(self, bot):
         super().__init__(bot)
         self.poll_emotes = ("\N{THUMBS UP SIGN}", "\N{THUMBS DOWN SIGN}", "\N{SHRUG}")
+
+    async def cog_check(self, ctx):
+        if ctx.guild is None:
+            return False
+
+        return True
 
     @cache()
     async def get_pool_roles(self, guild_id):

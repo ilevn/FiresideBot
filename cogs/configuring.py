@@ -35,6 +35,8 @@ class GuildConfig(db.Table, table_name='guild_config'):
     verification_role_id = db.DiscordIDColumn()
     # The verification channel for the server.
     verification_channel_id = db.DiscordIDColumn()
+    # The message ID of the verification disclaimer.
+    verification_message_id = db.DiscordIDColumn()
 
 
 class PunishmentConfig(db.Table, table_name='punishment_config'):
@@ -53,7 +55,8 @@ class PunishmentConfig(db.Table, table_name='punishment_config'):
 
 
 class VCChannelConfig(db.Table, table_name='vc_channel_config'):
-    id = db.PrimaryKeyColumn()
+    # The guild id.
+    id = db.Column(db.Integer(big=True), primary_key=True)
     # The guild id.
     guild_id = db.DiscordIDColumn()
     # The voice channel id.
@@ -184,6 +187,12 @@ class Config(Cog):
         super().__init__(bot)
         self.currently_configuring = weakref.WeakValueDictionary()
 
+    async def cog_check(self, ctx):
+        if ctx.guild is None:
+            return False
+
+        return True
+
     @staticmethod
     def invalidate_guild_config(ctx):
         # Invalidate to ensure cache integrity.
@@ -222,7 +231,7 @@ class Config(Cog):
         if not verification_channel:
             return
 
-        messages.append(await ctx.send(f"The default verification is going to be {default_channel.mention}."))
+        messages.append(await ctx.send(f"The default verification is going to be {verification_channel.mention}."))
 
         # Admin channel
         question = "Now, please provide the admin channel of the server in the same fashion as before."
@@ -286,9 +295,9 @@ class Config(Cog):
         # Jailed role.
         has_role = await ctx.prompt("Do you already have a verification role?")
         if has_role:
-            verification_role = await has_role_flow_create(ctx, messages, "Verification")
+            verification_role = await has_role_flow_create(ctx, messages, "Unverified")
         else:
-            verification_role = await manually_create_role(ctx, "Verification", messages)
+            verification_role = await manually_create_role(ctx, "Unverified", messages)
 
         return shitpost_role, jailed_role, verification_role
 
@@ -300,6 +309,7 @@ class Config(Cog):
         pages = Pages(ctx, entries=channel_names, use_index=False)
         pages.embed.title = "The following channels can be configured"
         await pages.paginate()
+        messages.append(pages.message)
 
         # vc channel -> role id
         vc_mapping = []
@@ -339,19 +349,22 @@ class Config(Cog):
                                         jailed_channel_id, shitpost_role, jailed_role,
                                         verification_channel_id, verification_role):
 
+        success, skipped, failure = 0, 0, 0
+        reason = "Automatic server setup."
+
         def deny_send_and_react(overwrites):
             overwrites.send_messages = False
             overwrites.add_reactions = False
 
-        success, skipped, failure = 0, 0, 0
-        reason = "Automatic server setup."
+        async def edit_perms(role, to_edit):
+            if not to_edit.is_empty():
+                await channel.set_permissions(role, overwrite=to_edit, reason=reason)
 
         # Jailed -> R:Jailed & Punishments
         # Shitpost -> R:All; W:Shitpost
         # No one has reactions.
         # Verification -> RW:Verification
         # @everyone -> R:everything except Jailed & Verification
-
         for channel in guild.channels:
             if not isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
                 continue
@@ -364,20 +377,22 @@ class Config(Cog):
                 verification_perms = channel.overwrites_for(verification_role)
 
                 if (channel_id := channel.id) == punish_channel_id:
-                    # This should theoretically be given.
                     deny_send_and_react(everyone_perms)
+                    verification_perms.read_messages = False
                 elif channel_id == shitpost_channel_id:
                     shitpost_perms.send_messages = True
                     jailed_perms.read_messages = False
+                    verification_perms.read_messages = False
                 elif channel_id == jailed_channel_id:
-                    jailed_perms.send_messages = True
-                    everyone_perms.send_messages = False
-                elif channel_id == verification_channel_id:
+                    jailed_perms.read_messages = True
                     everyone_perms.read_messages = False
-                    verification_perms.send_messages = True
+                elif channel_id == verification_channel_id:
+                    verification_perms.read_messages = True
+                    everyone_perms.read_messages = False
                 else:
                     # View channel or Read channel.
                     jailed_perms.read_messages = False
+                    verification_perms.read_messages = False
                     if isinstance(channel, discord.VoiceChannel):
                         shitpost_perms.connect = False
                     else:
@@ -386,10 +401,10 @@ class Config(Cog):
 
                 try:
                     # This is pretty awful but discord won't let us bulk edit channel perms.
-                    await channel.set_permissions(shitpost_role, overwrite=shitpost_perms, reason=reason)
-                    await channel.set_permissions(jailed_role, overwrite=jailed_perms, reason=reason)
-                    await channel.set_permissions(verification_role, overwrite=verification_perms, reason=reason)
-                    await channel.set_permissions(guild.default_role, overwrite=everyone_perms, reason=reason)
+                    await edit_perms(shitpost_role, shitpost_perms)
+                    await edit_perms(jailed_role, jailed_perms)
+                    await edit_perms(verification_role, verification_perms)
+                    await edit_perms(guild.default_role, everyone_perms)
                 except discord.HTTPException:
                     failure += 1
                 else:
@@ -446,15 +461,16 @@ class Config(Cog):
         messages.append(await ctx.send("Awesome, you're making great progress. Next step, server roles!"))
         shitpost_role, jailed_role, verification_role = await self._setup_roles(ctx, messages)
         # Configure all permission overwrites for the punishment role.
-        messages.append(await ctx.send("Roles, check! Setting up permission overwrites for punishment roles..."))
+        messages.append(await ctx.send("Roles, check! Setting up permission overwrites for punishment roles..."
+                                       " (This might take a while)"))
 
         async with ctx.typing():
             args = (ctx.guild, punish_chan, shitpost_chan, jailed_chan, shitpost_role, jailed_role,
                     verif_chan, verification_role)
             success, failure, skipped = await self._setup_channel_overwrites(*args)
             total = success + failure + skipped
-            await ctx.send(f"Attempted to update {total} channel permissions. "
-                           f"[Updated: {success}, Failed: {failure}, Skipped: {skipped}]")
+            messages.append(await ctx.send(f"Attempted to update {total} channel permissions. "
+                                           f"[Updated: {success}, Failed: {failure}, Skipped: {skipped}]"))
 
         # Configure VC channels.
         vc_mapping = await self._setup_vc_mappings(ctx, messages)
@@ -579,6 +595,31 @@ class Config(Cog):
             cog.get_pool_roles.invalidate_containing(f"{ctx.guild.id!r}")
 
         await ctx.send("Updated rolepool.")
+
+    async def set_config(self, ctx, key, value):
+        query = f"UPDATE guild_config SET {key} = $1 WHERE id = $2 AND is_configured = TRUE"
+        async with ctx.db.transaction():
+            status = await ctx.db.execute(query, value, ctx.guild.id)
+            if status == "UPDATE 0":
+                raise RuntimeError("No configured guild with this ID was found."
+                                   " Please use `config setup` to configure the database properly.")
+
+            self.invalidate_guild_config(ctx)
+
+    @config.command(name="greeting")
+    async def config_greeting(self, ctx, *, greeting):
+        """Set the default greeting for this server.
+        This commands supports the following templates:
+        - `$name` - A formatted string of the member that joined.
+        - `$name_mention` - A mention of the member that joined.
+        - `$server` - The server name.
+        """
+
+        try:
+            await self.set_config(ctx, "greeting", greeting)
+            await ctx.send("\N{THUMBS UP SIGN}")
+        except RuntimeError as e:
+            await ctx.send(e)
 
 
 setup = Config.setup

@@ -18,6 +18,12 @@ async def attempt_notification(member: discord.Member, text):
 
 
 class Punishments(Cog):
+    async def cog_check(self, ctx):
+        if ctx.guild is None:
+            return False
+
+        return True
+
     async def get_config(self, sendable) -> Optional[EventConfig]:
         if (events := self.bot.get_cog("Event")) is None:
             await sendable.send("Sorry, the event cog is currently not loaded...")

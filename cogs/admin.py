@@ -7,7 +7,6 @@ from cogs.utils.meta_cog import Cog
 
 
 class Admin(Cog):
-
     async def cog_check(self, ctx):
         return await checks.maintainer_check(ctx)
 

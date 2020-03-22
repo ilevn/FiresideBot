@@ -47,6 +47,7 @@ class FiresideBot(Bot):
         # Support for sentry.
         self.sentry = None
         if sentry_dsn := config.sentry_dsn:
+            self.logger.info("Logging errors to sentry.")
             self.sentry = sen_init(dsn=sentry_dsn, max_breadcrumbs=0)
 
         if self.dev_mode:
@@ -93,7 +94,7 @@ class FiresideBot(Bot):
 
         self.logger.info(
             f"Loaded Fireside Bot, logged in as {self.user.name}#{self.user.discriminator}"
-            f".\nInvite link: {discord.utils.oauth_url(self._app_id)}")
+            f".\nInvite link: {discord.utils.oauth_url(self._app_id, discord.Permissions(8))}")
 
     async def process_commands(self, message):
         ctx = await self.get_context(message, cls=Context)
@@ -117,10 +118,10 @@ class FiresideBot(Bot):
             await ctx.channel.send(f"\N{CROSS MARK} Bad argument: {' '.join(error.args)}")
         elif isinstance(error, commands.CommandInvokeError):
             original = error.original
-            if not isinstance(original, discord.HTTPException):
+            if not isinstance(original, discord.HTTPException) or self.dev_mode:
                 self.logger.critical(f'In {ctx.command.qualified_name}:')
-                traceback.print_tb(original.__traceback__)
-                self.logger.critical(f'{original.__class__.__name__}: {original}')
+                traceback.print_tb(error.__traceback__)
+                self.logger.critical(f'{error.__class__.__name__}: {error}')
                 await ctx.channel.send("Hmmm, this shouldn't normally happen."
                                        " This incident has been logged and reported!")
 

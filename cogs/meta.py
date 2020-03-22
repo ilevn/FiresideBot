@@ -19,6 +19,12 @@ class Meta(Cog):
     def cog_unload(self):
         self.bot.help_command = self.old_help_command
 
+    async def cog_check(self, ctx):
+        if ctx.guild is None:
+            return False
+
+        return True
+
     @commands.command()
     async def charinfo(self, ctx, *, characters: str):
         """Shows information about a number of characters."""
