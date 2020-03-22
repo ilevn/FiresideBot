@@ -56,7 +56,7 @@ class PunishmentConfig(db.Table, table_name='punishment_config'):
 
 class VCChannelConfig(db.Table, table_name='vc_channel_config'):
     # The guild id.
-    id = db.Column(db.Integer(big=True), primary_key=True)
+    id = db.DiscordIDColumn()
     # The voice channel id.
     vc_channel_id = db.DiscordIDColumn()
     # The corresponding voice room id.
@@ -424,6 +424,12 @@ class Config(Cog):
                            " manually clear `is_configured` in `guild_config`"
                            " and reload the Event cog.")
             return
+
+        # Clean db rows, just in case.
+        for config in ("guild_config", "punishment_config"):
+            await ctx.db.execute(f"DELETE FROM {config} WHERE id = $1", ctx.guild.id)
+
+        await ctx.db.execute("DELETE FROM vc_channel_config WHERE guild_id = $1", ctx.guild.id)
 
         # Release connection since we're going to wait for a bunch of input before actually committing.
         await ctx.release()

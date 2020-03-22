@@ -76,6 +76,7 @@ class Punishments(Cog):
             await member.edit(roles=[discord.Object(id=id_) for id_ in still_apply])
         except discord.Forbidden:
             await ctx.send("\N{CROSS MARK} I do not have permission to edit this member!")
+            return
         else:
             await ctx.send(f"Punished {member.name} for {duration_delta}.")
 
