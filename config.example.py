@@ -17,3 +17,6 @@ dev_prefix = "!"
 
 # The default postgresql driver connection string.
 postgresql = "postgresql://localhost:5432/firesidebot"
+
+# The DSN used by sentry.io's error handler.
+sentry_dsn = ""
