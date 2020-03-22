@@ -38,6 +38,7 @@ class Verification(Cog):
         await message.add_reaction("\N{SQUARED OK}")
         query = "UPDATE guild_config SET verification_message_id = $1 WHERE id = $2"
         await ctx.db.execute(query, message.id, guild_id)
+        await ctx.send(":thumbsup:")
 
     @Cog.listener()
     async def on_raw_reaction_add(self, payload):
