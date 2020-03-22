@@ -17,6 +17,10 @@ class Roles(db.Table):
     category = db.Column(db.String, nullable=True)
 
 
+# HOTFIX
+POLL_CHANNEL = 670468356100325430
+
+
 class Community(Cog):
     def __init__(self, bot):
         super().__init__(bot)
@@ -48,7 +52,7 @@ class Community(Cog):
         if not config:
             return
 
-        if message.channel.id != config.poll_channel_id:
+        if message.channel.id != POLL_CHANNEL:
             return
 
         if not message.content.startswith("Poll: "):
