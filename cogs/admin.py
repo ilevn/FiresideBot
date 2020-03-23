@@ -95,7 +95,7 @@ class Admin(Cog):
         # `git pull` redirects progress reports to stderr.
         # However, things like "fast forward" and other files are
         # redirected to stdout
-        if stdout.startswith('Already up-to-date.'):
+        if stdout.startswith('Already up to date.'):
             return await ctx.send(stdout)
 
         modules = self.find_modules_from_git(stdout)
