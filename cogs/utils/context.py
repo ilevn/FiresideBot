@@ -141,3 +141,15 @@ class Context(commands.Context):
             return await self.send(file=discord.File(fp, filename='message_too_long.txt'), **kwargs)
         else:
             return await self.send(content)
+
+    @staticmethod
+    def tick(opt, label=None):
+        lookup = {
+            True: '<:greenTick:691614138212024350>',
+            False: '<:redTick:691614142179835996>',
+            None: '<:greyTick:691614140266971137>',
+        }
+        emoji = lookup.get(opt, '<:redTick:691614142179835996>')
+        if label is not None:
+            return f'{emoji}: {label}'
+        return emoji
