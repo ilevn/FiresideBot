@@ -1,17 +1,19 @@
 import asyncio
 import textwrap
 import weakref
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from typing import Optional
 
+import asyncpg
 import discord
 from discord.ext import commands
 from discord.ext.commands import TextChannelConverter, BadArgument, RoleConverter, VoiceChannelConverter
 
-from cogs.utils import db, is_maintainer, Plural
+from cogs.utils import db, is_maintainer, Plural, checks, is_mod
+from cogs.utils.cache import cache
 from cogs.utils.command_lock import CLock, CommandIsLocked
 from cogs.utils.meta_cog import Cog
-from cogs.utils.paginators import Pages
+from cogs.utils.paginators import Pages, CannotPaginate
 
 
 class GuildConfig(db.Table, table_name='guild_config'):
@@ -29,7 +31,7 @@ class GuildConfig(db.Table, table_name='guild_config'):
     is_configured = db.Column(db.Boolean, default=False)
     # Member tracker channel.
     tracker_channel_id = db.DiscordIDColumn(nullable=True)
-    # The default poll channel.
+    # The default poll channel. Deprecated.
     poll_channel_id = db.DiscordIDColumn()
     # The verification role for the server.
     verification_role_id = db.DiscordIDColumn()
@@ -61,6 +63,176 @@ class VCChannelConfig(db.Table, table_name='vc_channel_config'):
     vc_channel_id = db.DiscordIDColumn()
     # The corresponding voice room id.
     channel_id = db.DiscordIDColumn()
+
+
+class Ignores(db.Table):
+    id = db.PrimaryKeyColumn()
+    guild_id = db.Column(db.Integer(big=True), index=True)
+
+    # Either a channel or an author.
+    entity_id = db.Column(db.Integer(big=True), index=True, unique=True)
+
+
+class CommandConfig(db.Table, table_name='command_config'):
+    id = db.PrimaryKeyColumn()
+
+    guild_id = db.Column(db.Integer(big=True), index=True)
+    channel_id = db.Column(db.Integer(big=True))
+
+    name = db.Column(db.String)
+    whitelist = db.Column(db.Boolean)
+
+    @classmethod
+    def create_table(cls, *, exists_ok=True):
+        statement = super().create_table(exists_ok=exists_ok)
+        # Create unique index.
+        sql = "CREATE UNIQUE INDEX IF NOT EXISTS command_config_uniq_idx" \
+              " ON command_config (channel_id, name, whitelist);"
+        return statement + '\n' + sql
+
+
+class LazyEntity:
+    """Meant for use with the internal paginator.
+    This lazily computes and caches the request for interactive sessions.
+    """
+    __slots__ = ('entity_id', 'guild', '_cache')
+
+    def __init__(self, guild, entity_id):
+        self.entity_id = entity_id
+        self.guild = guild
+        self._cache = None
+
+    def __str__(self):
+        if self._cache:
+            return self._cache
+
+        e = self.entity_id
+        g = self.guild
+
+        if (resolved := g.get_channel(e) or g.get_member(e)) is None:
+            self._cache = f'<Not Found: {e}>'
+        else:
+            self._cache = resolved.mention
+        return self._cache
+
+
+class CommandName(commands.Converter):
+    async def convert(self, ctx, argument):
+        lowered = argument.lower()
+
+        valid_commands = {
+            c.qualified_name
+            for c in ctx.bot.walk_commands()
+            if c.cog_name not in ('Config', 'Admin')
+        }
+
+        if lowered not in valid_commands:
+            raise commands.BadArgument('Invalid command name.')
+
+        return lowered
+
+
+class ResolvedCommandPermissions:
+    class _Entry:
+        __slots__ = ('allow', 'deny')
+
+        def __init__(self):
+            self.allow = set()
+            self.deny = set()
+
+    def __init__(self, guild_id, records):
+        self.guild_id = guild_id
+
+        self._lookup = defaultdict(self._Entry)
+
+        # channel_id: {allow: [commands], deny: [commands]}
+
+        for name, channel_id, whitelist in records:
+            entry = self._lookup[channel_id]
+            if whitelist:
+                entry.allow.add(name)
+            else:
+                entry.deny.add(name)
+
+    @staticmethod
+    def _split(obj):
+        # "memes are good" -> ["memes", "memes are", "memes are good"]
+        from itertools import accumulate
+        return list(accumulate(obj.split(), lambda x, y: f'{x} {y}'))
+
+    def get_blocked_commands(self, channel_id):
+        if not self._lookup:
+            return set()
+
+        guild = self._lookup[None]
+        channel = self._lookup[channel_id]
+
+        # First, apply the guild-level denies.
+        ret = guild.deny - guild.allow
+
+        # Then apply the channel-level denies.
+        return ret | (channel.deny - channel.allow)
+
+    def _is_command_blocked(self, name, channel_id):
+        command_names = self._split(name)
+
+        guild = self._lookup[None]  # no special channel_id
+        channel = self._lookup[channel_id]
+
+        blocked = None
+
+        # Block order:
+        # 1. Guild-level deny
+        # 2. Guild-level allow
+        # 3. Channel-level deny
+        # 4. Channel level allow
+
+        # Command >hello there
+        # >hello there <- Guild allow
+        # >hello <- Channel deny
+        # Result: Denied
+        # That's why we need two separate loops for this.
+        for command in command_names:
+            if command in guild.deny:
+                blocked = True
+
+            if command in guild.allow:
+                blocked = False
+
+        for command in command_names:
+            if command in channel.deny:
+                blocked = True
+
+            if command in channel.allow:
+                blocked = False
+
+        return blocked
+
+    def is_command_blocked(self, name, channel_id):
+        # fast path
+        if not self._lookup:
+            return False
+
+        return self._is_command_blocked(name, channel_id)
+
+    async def is_blocked(self, ctx):
+        # Fast path.
+        if not self._lookup:
+            return False
+
+        # Mods are never blocked.
+        if isinstance(ctx.author, discord.Member) and ctx.author.guild_permissions.manage_guild:
+            return False
+
+        return self._is_command_blocked(ctx.command.qualified_name, ctx.channel.id)
+
+
+class ChannelOrMember(commands.Converter):
+    async def convert(self, ctx, argument):
+        try:
+            return await commands.TextChannelConverter().convert(ctx, argument)
+        except commands.BadArgument:
+            return await commands.MemberConverter().convert(ctx, argument)
 
 
 async def get_arg_or_return(question, ctx, messages):
@@ -190,6 +362,79 @@ class Config(Cog):
             return False
 
         return True
+
+    async def bot_check_once(self, ctx):
+        if ctx.guild is None:
+            return True
+
+        is_owner = await ctx.bot.is_owner(ctx.author)
+        if is_owner:
+            return True
+
+        # Can they bypass?
+        bypass = ctx.author.guild_permissions.view_audit_log
+        if bypass:
+            return True
+
+        # Check if we're ignored.
+        is_ignored = await self.is_ignored(ctx.guild.id, ctx.author.id, channel_id=ctx.channel.id,
+                                           connection=ctx.db, check_bypass=False)
+
+        return not is_ignored
+
+    async def bot_check(self, ctx):
+        if ctx.guild is None:
+            return True
+
+        maintainer = await checks.maintainer_check(ctx)
+        if maintainer:
+            return True
+
+        resolved = await self.get_command_permissions(ctx.guild.id, connection=ctx.db)
+        return not await resolved.is_blocked(ctx)
+
+    @cache(maxsize=1024)
+    async def is_ignored(self, guild_id, member_id, *, channel_id=None, connection=None, check_bypass=True):
+        if check_bypass:
+            guild = self.bot.get_guild(guild_id)
+            if guild is not None:
+                member = guild.get_member(member_id)
+                if member is not None and member.guild_permissions.manage_guild:
+                    return False
+
+        connection = connection or self.bot.pool
+
+        if channel_id is None:
+            query = "SELECT 1 FROM ignores WHERE guild_id=$1 AND entity_id=$2;"
+            row = await connection.fetchrow(query, guild_id, member_id)
+        else:
+            query = "SELECT 1 FROM ignores WHERE guild_id=$1 AND entity_id IN ($2, $3);"
+            row = await connection.fetchrow(query, guild_id, member_id, channel_id)
+
+        return row is not None
+
+    @cache()
+    async def get_command_permissions(self, guild_id, *, connection=None):
+        connection = connection or self.bot.pool
+        query = "SELECT name, channel_id, whitelist FROM command_config WHERE guild_id=$1;"
+
+        records = await connection.fetch(query, guild_id)
+        return ResolvedCommandPermissions(guild_id, records)
+
+    async def _bulk_ignore_entries(self, ctx, entries):
+        async with ctx.db.transaction():
+            query = "SELECT entity_id FROM ignores WHERE guild_id=$1;"
+            records = await ctx.db.fetch(query, ctx.guild.id)
+
+            # No dupes.
+            current_ignores = {r[0] for r in records}
+            guild_id = ctx.guild.id
+            to_insert = [(guild_id, e.id) for e in entries if e.id not in current_ignores]
+
+            # Bulk COPY.
+            await ctx.db.copy_records_to_table('ignores', columns=('guild_id', 'entity_id'), records=to_insert)
+
+            self.is_ignored.invalidate_containing(f'{ctx.guild.id!r}:')
 
     @staticmethod
     def invalidate_guild_config(ctx):
@@ -526,6 +771,7 @@ class Config(Cog):
     @config.command(name="setup")
     @is_maintainer()
     async def config_setup(self, ctx):
+        """Sets up the central database of the bot."""
         if (lock := self.currently_configuring.get(ctx.guild.id)) is None:
             self.currently_configuring[ctx.guild.id] = lock = CLock()
         try:
@@ -609,6 +855,212 @@ class Config(Cog):
                                    " Please use `config setup` to configure the database properly.")
 
             self.invalidate_guild_config(ctx)
+
+    @config.group(invoke_without_command=True, aliases=['blacklist'])
+    async def ignore(self, ctx, *entities: ChannelOrMember):
+        """Ignores text channels or members from using the bot.
+        If no channel or member is specified, the current channel is ignored.
+        Mods can still use the bot, regardless of ignore status.
+        """
+
+        if not entities:
+            # shortcut for a single insert from the invocation channel.
+            query = "INSERT INTO ignores (guild_id, entity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;"
+            await ctx.db.execute(query, ctx.guild.id, ctx.channel.id)
+            self.is_ignored.invalidate_containing(f'{ctx.guild.id!r}:')
+        else:
+            await self._bulk_ignore_entries(ctx, entities)
+
+        await ctx.send("Gotcha")
+
+    @ignore.command(name='list')
+    @commands.cooldown(2.0, 60.0, commands.BucketType.guild)
+    async def ignore_list(self, ctx):
+        """Tells you what channels or members are currently ignored in this server."""
+
+        query = "SELECT entity_id FROM ignores WHERE guild_id=$1;"
+
+        guild = ctx.guild
+        records = await ctx.db.fetch(query, guild.id)
+
+        if not records:
+            return await ctx.send('I am not ignoring anything here.')
+
+        entries = [LazyEntity(guild, r[0]) for r in records]
+        await ctx.release()
+
+        try:
+            pages = Pages(ctx, entries=entries, per_page=20)
+            await pages.paginate()
+        except Exception as e:
+            await ctx.send(str(e))
+
+    @ignore.command(name='all')
+    async def _all(self, ctx):
+        """Ignores every channel in the server from being processed.
+        This works by adding every channel that the server currently has into
+        """
+        await self._bulk_ignore_entries(ctx, ctx.guild.text_channels)
+        await ctx.send('Successfully blocking all channels here.')
+
+    @ignore.command(name='clear')
+    async def ignore_clear(self, ctx):
+        """Clears all the currently set ignores.
+        """
+
+        query = "DELETE FROM ignores WHERE guild_id=$1;"
+        await ctx.db.execute(query, ctx.guild.id)
+        self.is_ignored.invalidate_containing(f'{ctx.guild.id!r}:')
+        await ctx.send('Successfully cleared all ignores.')
+
+    @config.group(invoke_without_command=True)
+    async def unignore(self, ctx, *entities: ChannelOrMember):
+        """Allows channels or members to use the bot again.
+        If nothing is specified, it unignores the current channel.
+        """
+
+        if len(entities) == 1:
+            record = entities[0]
+            query = "DELETE FROM ignores WHERE guild_id=$1 AND entity_id=$2;"
+            await ctx.db.execute(query, ctx.guild.id, record.id)
+        else:
+            query = "DELETE FROM ignores WHERE guild_id=$1 AND entity_id = ANY($2::BIGINT[]);"
+            entities = [c.id for c in entities]
+            await ctx.db.execute(query, ctx.guild.id, entities)
+
+        self.is_ignored.invalidate_containing(f'{ctx.guild.id!r}:')
+        await ctx.send("Gotcha")
+
+    @unignore.command(name='all')
+    async def unignore_all(self, ctx):
+        """An alias for ignore clear command."""
+        await ctx.invoke(self.ignore_clear)
+
+    @config.group(aliases=['guild'])
+    @is_mod()
+    async def server(self, ctx):
+        """Handles the server-specific permissions."""
+        pass
+
+    @config.group()
+    @is_mod()
+    async def channel(self, ctx):
+        """Handles the channel-specific permissions."""
+        pass
+
+    async def command_toggle(self, connection, guild_id, channel_id, name, *, whitelist=True):
+        # Clear the cache.
+        self.get_command_permissions.invalidate(self, guild_id)
+
+        if channel_id is None:
+            subcheck = 'channel_id IS NULL'
+            args = (guild_id, name)
+        else:
+            subcheck = 'channel_id=$3'
+            args = (guild_id, name, channel_id)
+
+        async with connection.transaction():
+            # Delete the previous entry regardless of what it was
+            query = f"DELETE FROM command_config WHERE guild_id=$1 AND name=$2 AND {subcheck};"
+            await connection.execute(query, *args)
+
+            query = "INSERT INTO command_config (guild_id, channel_id, name, whitelist) VALUES ($1, $2, $3, $4);"
+
+            try:
+                await connection.execute(query, guild_id, channel_id, name, whitelist)
+            except asyncpg.UniqueViolationError:
+                msg = (
+                    'This command is already disabled.'
+                    if not whitelist else 'This command is already explicitly enabled.'
+                )
+                raise RuntimeError(msg)
+
+    @channel.command(name='disable')
+    async def channel_disable(self, ctx, *, command: CommandName):
+        """Disables a command for this channel."""
+
+        try:
+            await self.command_toggle(ctx.db, ctx.guild.id, ctx.channel.id, command, whitelist=False)
+        except RuntimeError as e:
+            await ctx.send(e)
+        else:
+            await ctx.send('Command successfully disabled for this channel.')
+
+    @channel.command(name='enable')
+    async def channel_enable(self, ctx, *, command: CommandName):
+        """Enables a command for this channel."""
+
+        try:
+            await self.command_toggle(ctx.db, ctx.guild.id, ctx.channel.id, command, whitelist=True)
+        except RuntimeError as e:
+            await ctx.send(e)
+        else:
+            await ctx.send('Command successfully enabled for this channel.')
+
+    @server.command(name='disable')
+    async def server_disable(self, ctx, *, command: CommandName):
+        """Disables a command for this server."""
+
+        try:
+            await self.command_toggle(ctx.db, ctx.guild.id, None, command, whitelist=False)
+        except RuntimeError as e:
+            await ctx.send(e)
+        else:
+            await ctx.send('Command successfully disabled for this server')
+
+    @server.command(name='enable')
+    async def server_enable(self, ctx, *, command: CommandName):
+        """Enables a command for this server."""
+
+        try:
+            await self.command_toggle(ctx.db, ctx.guild.id, None, command, whitelist=True)
+        except RuntimeError as e:
+            await ctx.send(e)
+        else:
+            await ctx.send('Command successfully enabled for this server.')
+
+    @config.command(name='enable')
+    @is_mod()
+    async def config_enable(self, ctx, channel: Optional[discord.TextChannel], *, command: CommandName):
+        """Enables a command the server or a channel."""
+
+        channel_id = channel.id if channel else None
+        human_friendly = channel.mention if channel else 'the server'
+        try:
+            await self.command_toggle(ctx.db, ctx.guild.id, channel_id, command, whitelist=True)
+        except RuntimeError as e:
+            await ctx.send(e)
+        else:
+            await ctx.send(f'Command successfully enabled for {human_friendly}.')
+
+    @config.command(name='disable')
+    @is_mod()
+    async def config_disable(self, ctx, channel: Optional[discord.TextChannel], *, command: CommandName):
+        """Disables a command for the server or a channel."""
+
+        channel_id = channel.id if channel else None
+        human_friendly = channel.mention if channel else 'the server'
+        try:
+            await self.command_toggle(ctx.db, ctx.guild.id, channel_id, command, whitelist=False)
+        except RuntimeError as e:
+            await ctx.send(e)
+        else:
+            await ctx.send(f'Command successfully disabled for {human_friendly}.')
+
+    @config.command(name='disabled')
+    @is_mod()
+    async def config_disabled(self, ctx, *, channel: discord.TextChannel = None):
+        """Shows the disabled commands for the channel given."""
+
+        channel = channel or ctx.channel
+        resolved = await self.get_command_permissions(ctx.guild.id)
+        disabled = resolved.get_blocked_commands(channel.id)
+
+        pages = Pages(ctx, entries=list(disabled), use_index=False)
+        try:
+            await pages.paginate()
+        except CannotPaginate as e:
+            return await ctx.send(f"Could not paginate: {e}")
 
     @config.command(name="greeting")
     async def config_greeting(self, ctx, *, greeting):
