@@ -44,6 +44,9 @@ class Community(Cog):
         if message.author.bot:
             return
 
+        if message.guild is None:
+            return
+
         cog = self.bot.get_cog("Event")
         if not cog:
             return
