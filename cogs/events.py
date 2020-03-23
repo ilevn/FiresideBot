@@ -120,7 +120,7 @@ class Event(Cog):
                 return
 
             # Also fetch vc mappings.
-            vc_mapping_query = "SELECT vc_channel_id, channel_id FROM vc_channel_config WHERE guild_id = $1"
+            vc_mapping_query = "SELECT vc_channel_id, channel_id FROM vc_channel_config WHERE id = $1"
             mappings = await con.fetch(vc_mapping_query, guild_id)
             return record and await EventConfig.from_record(record, self.bot, mappings)
 
