@@ -25,6 +25,13 @@ class RemovalType(IntEnum):
     def audit_log_action(self):
         return getattr(discord.AuditLogAction, self.name.lower())
 
+    @property
+    def action_type(self):
+        return getattr(ActionType, self.name.upper())
+
+    def punishment_type(self):
+        return "punishment_add" if self in (RemovalType.KICK, RemovalType.BAN) else "punishment_remove"
+
 
 class RemovalsTable(db.Table, table_name='removals'):
     id = db.PrimaryKeyColumn()
@@ -230,9 +237,9 @@ class Removals(Cog):
         query = """UPDATE removals SET message_id = $1 WHERE id = $2"""
         await self.bot.pool.execute(query, msg.id, record[0])
         # Also dispatch to #punishment channel.
-        action_type = ActionType.BAN if type_ == RemovalType.BAN else ActionType.UNBAN
+        action_type = type_.action_type
         punishment = Punishment(guild, member, responsible_mod, action_type, entry.reason or "No reason provided.")
-        self.bot.dispatch("punishment_add" if action_type == ActionType.BAN else "punishment_remove", punishment)
+        self.bot.dispatch(action_type.punishment_type, punishment)
 
         if type_ == RemovalType.BAN:
             # Set marker to avoid event clashing with KICK.
