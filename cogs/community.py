@@ -76,7 +76,7 @@ class Community(Cog):
 
     # TODO: Better name.
     @commands.command(name="getrole", aliases=["iam"])
-    async def roles_get(self, ctx, role: discord.Role):
+    async def roles_get(self, ctx, *, role: discord.Role):
         """Assign a role to yourself from the rolepool."""
 
         roles = await self.get_pool_roles(ctx.guild.id)
@@ -97,7 +97,7 @@ class Community(Cog):
         await ctx.message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
 
     @commands.command(name="removerole", aliases=["iamn"])
-    async def roles_remove(self, ctx, role: discord.Role):
+    async def roles_remove(self, ctx, *, role: discord.Role):
         """Remove a role from yourself."""
 
         roles = await self.get_pool_roles(ctx.guild.id)
