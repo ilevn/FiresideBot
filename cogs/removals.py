@@ -239,7 +239,7 @@ class Removals(Cog):
         # Also dispatch to #punishment channel.
         action_type = type_.action_type
         punishment = Punishment(guild, member, responsible_mod, action_type, entry.reason or "No reason provided.")
-        self.bot.dispatch(action_type.punishment_type, punishment)
+        self.bot.dispatch(type_.punishment_type, punishment)
 
         if type_ == RemovalType.BAN:
             # Set marker to avoid event clashing with KICK.
