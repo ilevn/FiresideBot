@@ -134,14 +134,14 @@ class Event(Cog):
             if channel_id := config.mappings.get(after.channel.id):
                 channel = guild.get_channel(channel_id)
                 if channel:
-                    await channel.set_permissions(member, read_messages=True)
+                    await channel.set_permissions(member, read_messages=True, send_messages=True)
 
         elif is_outside_voice(after) and is_inside_voice(before):
             # Left channel.
             if channel_id := config.mappings.get(before.channel.id):
                 channel = guild.get_channel(channel_id)
                 if channel:
-                    await channel.set_permissions(member, read_messages=None)
+                    await channel.set_permissions(member, read_messages=None, send_messages=False)
 
     async def update_tracker(self, guild):
         config = await self.get_guild_config(guild.id)
