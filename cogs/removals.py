@@ -29,6 +29,7 @@ class RemovalType(IntEnum):
     def action_type(self):
         return getattr(ActionType, self.name.upper())
 
+    @property
     def punishment_type(self):
         return "punishment_add" if self in (RemovalType.KICK, RemovalType.BAN) else "punishment_remove"
 
