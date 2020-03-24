@@ -17,15 +17,7 @@ class Roles(db.Table):
     category = db.Column(db.String, nullable=True)
 
 
-# HOTFIX
-POLL_CHANNEL = 670468356100325430
-
-
 class Community(Cog):
-    def __init__(self, bot):
-        super().__init__(bot)
-        self.poll_emotes = ("\N{THUMBS UP SIGN}", "\N{THUMBS DOWN SIGN}", "\N{SHRUG}")
-
     async def cog_check(self, ctx):
         if ctx.guild is None:
             return False
@@ -38,34 +30,6 @@ class Community(Cog):
         async with self.bot.pool.acquire() as con:
             records = await con.fetch(query, guild_id)
             return records and {r[0] for r in records}
-
-    @Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot:
-            return
-
-        if message.guild is None:
-            return
-
-        cog = self.bot.get_cog("Event")
-        if not cog:
-            return
-
-        config = await cog.get_guild_config(message.guild.id)
-        if not config:
-            return
-
-        if message.channel.id != POLL_CHANNEL:
-            return
-
-        if not message.content.lower().startswith("poll: "):
-            await message.channel.send("Bad poll format. Please make sure your poll starts with `Poll: `",
-                                       delete_after=8)
-            await message.delete(delay=7)
-            return
-
-        for emote in self.poll_emotes:
-            await message.add_reaction(emote)
 
     @Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role):

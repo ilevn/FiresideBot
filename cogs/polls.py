@@ -69,7 +69,7 @@ class Polls(Cog):
                 for emote in self.poll_emotes:
                     await message.add_reaction(emote)
             else:
-                await message.channel.send('xsoihjfdus', delete_after=20)
+                await message.channel.send('Wrong poll format. Please type "Poll: poll message here"', delete_after=20)
                 await message.delete(delay=18)
         else:
             if message.content.lower().startswith('poll:'):
