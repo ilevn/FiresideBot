@@ -194,6 +194,10 @@ class Removals(Cog):
         return config and config.modlog
 
     async def _parse_and_log_event(self, guild, member, type_, formatter):
+        if member.id == self.bot.user.id:
+            # Bot probably got removed from the guild.
+            return
+
         # First, try to get audit log info.
         info = await self.get_potential_removal_entry(guild, member, type_)
         if not info:
