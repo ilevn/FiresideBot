@@ -62,6 +62,8 @@ class Verification(Cog):
         guild = self.bot.get_guild(payload.guild_id)
         member = guild.get_member(user.id)
         await member.remove_roles(discord.Object(id=config.verification_role_id))
+        # Use internal method to get around having to fetch the message object.
+        await self.bot.http.remove_reaction(payload.channel_id, payload.message_id, payload.emoji, user.id)
 
 
 setup = Verification.setup
