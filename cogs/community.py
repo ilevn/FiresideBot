@@ -20,6 +20,7 @@ class Roles(db.Table):
 # HOTFIX
 POLL_CHANNEL = 670468356100325430
 
+
 class Community(Cog):
     def __init__(self, bot):
         super().__init__(bot)
