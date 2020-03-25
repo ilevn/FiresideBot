@@ -3,6 +3,7 @@ from discord.ext import commands
 
 from cogs.utils import db
 from cogs.utils.cache import cache
+from cogs.utils.converters import CaselessRole
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, RolePoolPages
 
@@ -36,11 +37,10 @@ class Community(Cog):
         query = "DELETE FROM roles WHERE guild_id = $1 AND role_id = $2"
         guild_id = role.guild.id
         await self.bot.pool.execute(query, guild_id, role.id)
-        self.get_pool_roles.invalidate(guild_id)
+        self.get_pool_roles.invalidate(self, guild_id)
 
-    # TODO: Better name.
     @commands.command(name="getrole", aliases=["iam"])
-    async def roles_get(self, ctx, *, role: discord.Role):
+    async def roles_get(self, ctx, *, role: CaselessRole):
         """Assign a role to yourself from the rolepool."""
 
         roles = await self.get_pool_roles(ctx.guild.id)
@@ -61,7 +61,7 @@ class Community(Cog):
         await ctx.message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
 
     @commands.command(name="removerole", aliases=["iamn"])
-    async def roles_remove(self, ctx, *, role: discord.Role):
+    async def roles_remove(self, ctx, *, role: CaselessRole):
         """Remove a role from yourself."""
 
         roles = await self.get_pool_roles(ctx.guild.id)
