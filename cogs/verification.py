@@ -15,7 +15,7 @@ class Verification(Cog):
     @disclaimer.command()
     async def set(self, ctx, *, content):
         """Sets the disclaimer for this channel.
-        Note: This will overwrite the old disclaimer, if present..
+        Note: This will overwrite the old disclaimer, if present.
         """
 
         guild_id = ctx.guild.id
@@ -31,6 +31,7 @@ class Verification(Cog):
             message = await config.verification_channel.fetch_message(old_id)
             if message:
                 await message.edit(content=content)
+                await ctx.send("\N{THUMBS UP SIGN}")
                 return
 
         # Message not found.
@@ -38,7 +39,9 @@ class Verification(Cog):
         await message.add_reaction("\N{SQUARED OK}")
         query = "UPDATE guild_config SET verification_message_id = $1 WHERE id = $2"
         await ctx.db.execute(query, message.id, guild_id)
-        await ctx.send(":thumbsup:")
+        # Also invalidate our config.
+        event_cog.get_guild_config.invalidate(event_cog, guild_id)
+        await ctx.send("\N{THUMBS UP SIGN}")
 
     @Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -49,13 +52,16 @@ class Verification(Cog):
         if not isinstance(channel, discord.TextChannel):
             return
 
-        user = self.bot.get_user(payload.user_id)
-        if user is None or user.bot:
-            return
-
         event_cog = self.bot.get_cog("Event")
         config = event_cog and await event_cog.get_guild_config(payload.guild_id)
         if not config:
+            return
+
+        if payload.message_id != config.verification_message_id:
+            return
+
+        user = self.bot.get_user(payload.user_id)
+        if user is None or user.bot:
             return
 
         # Upgrade our user
@@ -67,4 +73,3 @@ class Verification(Cog):
 
 
 setup = Verification.setup
-

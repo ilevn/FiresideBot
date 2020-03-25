@@ -48,7 +48,8 @@ class EventConfig:
     __slots__ = ('bot', 'id', 'modlog_channel_id', 'mod_channel_id', 'default_channel_id',
                  'greeting', 'shitpost_channel_id', 'jailed_channel_id', 'shitpost_role_id',
                  'jailed_role_id', 'mappings', 'tracker_channel_id', 'poll_channel_id',
-                 'punishment_channel_id', 'verification_channel_id', 'verification_role_id')
+                 'punishment_channel_id', 'verification_channel_id', 'verification_role_id',
+                 'verification_message_id')
 
     @classmethod
     async def from_record(cls, record, bot, vc_mappings):
