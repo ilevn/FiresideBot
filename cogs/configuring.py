@@ -444,7 +444,7 @@ class Config(Cog):
             return event_cog.get_guild_config.invalidate(event_cog, ctx.guild.id)
 
     @commands.group()
-    @is_maintainer()
+    @is_mod()
     async def config(self, ctx):
         """The central configuration system of the bot."""
         if ctx.invoked_subcommand is None:
