@@ -129,6 +129,8 @@ class Event(Cog):
     async def on_voice_state_update(self, member, before, after):
         guild = member.guild
         config = await self.get_guild_config(guild.id)
+        if not config:
+            return
 
         if is_outside_voice(before) and is_inside_voice(after):
             # Joined channel.
