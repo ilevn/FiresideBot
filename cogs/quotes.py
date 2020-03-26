@@ -28,7 +28,7 @@ class Quotes(Cog):
 
     @_quote.command(name="add")
     @is_mod()
-    async def _quote_add(self, ctx, member: [discord.Member, FetchedUser], *, quote: clean_content):
+    async def _quote_add(self, ctx, member: Union[discord.Member, FetchedUser], *, quote: clean_content):
         """Adds a quote for a specific user in this guild."""
         query = """INSERT INTO quotes (guild_id, user_id, quote) VALUES ($1, $2, $3)"""
         await ctx.db.execute(query, ctx.guild.id, member.id, quote)
