@@ -1,10 +1,12 @@
 import textwrap
+from typing import Union
 
 import discord
 from discord.ext import commands
 from discord.ext.commands import clean_content
 
 from cogs.utils import db, is_mod
+from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 
 
@@ -26,7 +28,7 @@ class Quotes(Cog):
 
     @_quote.command(name="add")
     @is_mod()
-    async def _quote_add(self, ctx, member: discord.Member, *, quote: clean_content):
+    async def _quote_add(self, ctx, member: [discord.Member, FetchedUser], *, quote: clean_content):
         """Adds a quote for a specific user in this guild."""
         query = """INSERT INTO quotes (guild_id, user_id, quote) VALUES ($1, $2, $3)"""
         await ctx.db.execute(query, ctx.guild.id, member.id, quote)
@@ -34,18 +36,17 @@ class Quotes(Cog):
         await ctx.send('\N{WHITE HEAVY CHECK MARK} Success :) Quote entry added')
 
     @_quote.command(name="random")
-    async def _quote_random(self, ctx, *, member: discord.Member):
+    async def _quote_random(self, ctx, *, member: Union[discord.Member, FetchedUser]):
         """Displays a random quote for a member."""
-        discord_char_limit = 2000
-        query = """SELECT quote FROM quotes WHERE guild_id = $1 AND user_id = $2 ORDER BY random() limit 1"""
+        query = """SELECT quote FROM quotes WHERE guild_id = $1 AND user_id = $2 ORDER BY random() LIMIT 1"""
         quote = await ctx.db.fetchval(query, ctx.guild.id, member.id)
-
         if not quote:
             return
 
-        display_quote = textwrap.shorten(f"{member.name} \N{PUBLIC ADDRESS LOUDSPEAKER} {quote}", discord_char_limit)
-
-        await ctx.send(display_quote)
+        member_name = getattr(member, "display_name", str(member))
+        embed = discord.Embed(title=f"Here's a quote from {member_name}", colour=discord.Colour.light_grey())
+        embed.description = textwrap.shorten(f"\N{PUBLIC ADDRESS LOUDSPEAKER}\n{quote}", width=2000)
+        await ctx.send(embed=embed)
 
 
 setup = Quotes.setup
