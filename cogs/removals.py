@@ -11,6 +11,7 @@ import discord
 from discord.ext import commands
 
 from cogs.utils import db, Plural, human_timedelta, is_mod
+from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, Pages
 from cogs.utils.punishment import Punishment, ActionType
@@ -52,18 +53,6 @@ class RemovalsTable(db.Table, table_name='removals'):
     name = db.Column(db.String, index=True)
     # Whether this is a kick, ban or unban.
     type = db.Column(db.Integer, default=0)
-
-
-class FetchedUser(commands.Converter):
-    async def convert(self, ctx, argument):
-        if not argument.isdigit():
-            raise commands.BadArgument('Not a valid user ID.')
-        try:
-            return await ctx.bot.fetch_user(argument)
-        except discord.NotFound:
-            raise commands.BadArgument('User not found.') from None
-        except discord.HTTPException:
-            raise commands.BadArgument('An error occurred while fetching the user.') from None
 
 
 class ActionReason(commands.Converter):
