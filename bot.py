@@ -150,6 +150,8 @@ class FiresideBot(Bot):
 
             with sen_configure_scope() as scope:
                 scope.set_context("Event information", data)
+                # For some reason, this doesn't get cleared.
+                scope.remove_context("Invoker Information")
                 # sys.exc_info() is used under the hood.
                 capture_exception()
         else:
