@@ -9,7 +9,7 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import TextChannelConverter, BadArgument, RoleConverter, VoiceChannelConverter
 
-from cogs.utils import db, is_maintainer, Plural, checks, is_mod
+from cogs.utils import db, Plural, checks, is_mod
 from cogs.utils.cache import cache
 from cogs.utils.command_lock import CLock, CommandIsLocked
 from cogs.utils.meta_cog import Cog
@@ -797,8 +797,8 @@ class Config(Cog):
             if cog := self.bot.get_cog("Community"):
                 cog.get_pool_roles.invalidate_containing(f"{ctx.guild.id!r}")
 
-    # Maybe change perm system.
     @config.group(name="roles")
+    @is_mod()
     async def _roles(self, ctx):
         """Handles assignable roles for the server """
         pass
@@ -855,6 +855,7 @@ class Config(Cog):
             self.invalidate_guild_config(ctx)
 
     @config.group(invoke_without_command=True, aliases=['blacklist'])
+    @is_mod()
     async def ignore(self, ctx, *entities: ChannelOrMember):
         """Ignores text channels or members from using the bot.
         If no channel or member is specified, the current channel is ignored.
@@ -873,6 +874,7 @@ class Config(Cog):
 
     @ignore.command(name='list')
     @commands.cooldown(2.0, 60.0, commands.BucketType.guild)
+    @is_mod()
     async def ignore_list(self, ctx):
         """Tells you what channels or members are currently ignored in this server."""
 
@@ -894,6 +896,7 @@ class Config(Cog):
             await ctx.send(str(e))
 
     @ignore.command(name='all')
+    @is_mod()
     async def _all(self, ctx):
         """Ignores every channel in the server from being processed.
         This works by adding every channel that the server currently has into
@@ -902,6 +905,7 @@ class Config(Cog):
         await ctx.send('Successfully blocking all channels here.')
 
     @ignore.command(name='clear')
+    @is_mod()
     async def ignore_clear(self, ctx):
         """Clears all the currently set ignores.
         """
@@ -912,6 +916,7 @@ class Config(Cog):
         await ctx.send('Successfully cleared all ignores.')
 
     @config.group(invoke_without_command=True)
+    @is_mod()
     async def unignore(self, ctx, *entities: ChannelOrMember):
         """Allows channels or members to use the bot again.
         If nothing is specified, it unignores the current channel.
@@ -930,6 +935,7 @@ class Config(Cog):
         await ctx.send("Gotcha")
 
     @unignore.command(name='all')
+    @is_mod()
     async def unignore_all(self, ctx):
         """An alias for ignore clear command."""
         await ctx.invoke(self.ignore_clear)
