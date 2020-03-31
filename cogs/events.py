@@ -107,6 +107,7 @@ class Event(Cog):
     def __init__(self, bot):
         super().__init__(bot)
         # Save their roles for 60 minutes.
+        self._recent_bad_nicks = set()
         self._member_state = defaultdict(lambda: ExpiringCache(3600))
         self._pending_mute = defaultdict(set)
 
@@ -219,9 +220,15 @@ class Event(Cog):
             if config.default_channel and config.greeting:
                 await config.default_channel.send(self.format_greeting(member, config.greeting))
 
-        if config.modlog:
-            ping = "@here" if state and state.muted else ""
-            await config.modlog.send(content=ping, embed=embed)
+        if not config.modlog:
+            return
+
+        ping = "@here" if state and state.muted else ""
+        await config.modlog.send(content=ping, embed=embed)
+        # Check their default display name.
+        is_bad_name = await self.validate_nickname(member)
+        if is_bad_name:
+            await config.modlog.send(embed=is_bad_name)
 
     @Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -302,6 +309,23 @@ class Event(Cog):
 
         await config.modlog.send(embed=embed)
 
+    def validate_nickname(self, member) -> typing.Optional[discord.Embed]:
+        new_nick = member.display_name
+        if new_nick.isascii():
+            return
+
+        # Maybe .encode in the future.
+        ascii_nick = "Ascii nickname needed"
+        self._recent_bad_nicks.add(member.id)
+        await member.edit(nick=ascii_nick)
+
+        embed = discord.Embed(title=f"\U000026a0 Bad member name fixed")
+        embed.description = f"Original nickname '{new_nick}'"
+        embed.add_field(name="Member", value=member.name, inline=False)
+        embed.add_field(name="New nick", value=ascii_nick, inline=False)
+        embed.timestamp = datetime.utcnow()
+        return embed
+
     @Cog.listener()
     async def on_member_update(self, before: Member, after: Member):
         config = await self.get_guild_config(after.guild.id)
@@ -345,6 +369,18 @@ class Event(Cog):
                 pass
 
         if before.nick != after.nick:
+            if after.id in self._recent_bad_nicks:
+                # We triggered this event.
+                self._recent_bad_nicks.remove(after.id)
+                return
+
+            if after.nick is not None:
+                # Check whether the new nickname is ascii-only.
+                is_bad_nick = await self.validate_nickname(after)
+                if is_bad_nick:
+                    await config.modlog.send(embed=is_bad_nick)
+                    return
+
             embed = discord.Embed(colour=0xffcc80)
             embed.title = f"\U0001f4cb {after.name}'s nickname has changed:"
             embed.add_field(name="Before", value=before.nick)
@@ -355,7 +391,6 @@ class Event(Cog):
     @Cog.listener()
     async def on_bulk_message_delete(self, messages: typing.List[discord.Message]):
         # Filter bot messages.
-
         actual_messages = [m for m in messages if not m.author.bot]
         if not actual_messages:
             return
