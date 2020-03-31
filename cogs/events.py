@@ -309,7 +309,7 @@ class Event(Cog):
 
         await config.modlog.send(embed=embed)
 
-    def validate_nickname(self, member) -> typing.Optional[discord.Embed]:
+    async def validate_nickname(self, member) -> typing.Optional[discord.Embed]:
         new_nick = member.display_name
         if new_nick.isascii():
             return
