@@ -137,7 +137,7 @@ class FiresideBot(Bot):
                     scope.set_context("Invoker information", data)
                     capture_exception(original)
 
-        elif isinstance(error, commands.ArgumentParsingError) or self.dev_mode:
+        elif isinstance(error, (commands.ArgumentParsingError, commands.CommandOnCooldown)) or self.dev_mode:
             await ctx.send(error)
 
     async def on_error(self, event, *args, **kwargs):
