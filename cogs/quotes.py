@@ -49,7 +49,7 @@ class Quotes(Cog):
         await ctx.send(embed=embed)
 
     @_quote.command(name="all")
-    @is_mod()
+    @commands.cooldown(1, 30.0, type=commands.BucketType.member)
     async def quotes_all(self, ctx, *, member: discord.Member = None):
         """Gets all quotes of a server member or the whole guild, if
         no member is specified.
@@ -59,7 +59,7 @@ class Quotes(Cog):
             subcheck = ""
             args = (guild.id,)
         else:
-            subcheck = "AND user_id = $2"
+            subcheck = "AND user_id = $2 ORDER BY user_id"
             args = (guild.id, member.id)
 
         query = f"SELECT quote, user_id FROM quotes WHERE guild_id = $1 {subcheck}"
@@ -67,6 +67,7 @@ class Quotes(Cog):
 
         if not records:
             await ctx.send("Could not find any quotes for this server...")
+            return
 
         def get_member():
             mem = guild.get_member(user_id)
