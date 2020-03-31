@@ -171,24 +171,3 @@ class PaginatedHelpCommand(commands.HelpCommand):
 
         await self.context.release()
         await pages.paginate()
-
-
-class FieldPages(Pages):
-    """Similar to Pages except entries should be a list of
-    tuples having (key, value) to show as embed fields instead.
-    """
-
-    def prepare_embed(self, entries, page, *, first=False):
-        self.embed.clear_fields()
-        self.embed.description = discord.Embed.Empty
-
-        for key, value in entries:
-            self.embed.add_field(name=key, value=value, inline=False)
-
-        if self.maximum_pages > 1:
-            if self.show_entry_count:
-                text = f'Page {page}/{self.maximum_pages} ({len(self.entries)} entries)'
-            else:
-                text = f'Page {page}/{self.maximum_pages}'
-
-            self.embed.set_footer(text=text)
