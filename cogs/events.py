@@ -374,12 +374,11 @@ class Event(Cog):
                 self._recent_bad_nicks.remove(after.id)
                 return
 
-            if after.nick is not None:
-                # Check whether the new nickname is ascii-only.
-                is_bad_nick = await self.validate_nickname(after)
-                if is_bad_nick:
-                    await config.modlog.send(embed=is_bad_nick)
-                    return
+            # Check whether the new display name is ascii-only.
+            is_bad_nick = await self.validate_nickname(after)
+            if is_bad_nick:
+                await config.modlog.send(embed=is_bad_nick)
+                return
 
             embed = discord.Embed(colour=0xffcc80)
             embed.title = f"\U0001f4cb {after.name}'s nickname has changed:"
