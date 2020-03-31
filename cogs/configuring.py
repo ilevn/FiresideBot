@@ -769,7 +769,6 @@ class Config(Cog):
         self.invalidate_guild_config(ctx)
 
     @config.command(name="setup")
-    @is_maintainer()
     async def config_setup(self, ctx):
         """Sets up the central database of the bot."""
         if (lock := self.currently_configuring.get(ctx.guild.id)) is None:
@@ -800,7 +799,6 @@ class Config(Cog):
 
     # Maybe change perm system.
     @config.group(name="roles")
-    @is_maintainer()
     async def _roles(self, ctx):
         """Handles assignable roles for the server """
         pass
