@@ -317,7 +317,12 @@ class Event(Cog):
         # Maybe .encode in the future.
         ascii_nick = "Ascii nickname needed"
         self._recent_bad_nicks.add(member.id)
-        await member.edit(nick=ascii_nick)
+
+        try:
+            await member.edit(nick=ascii_nick)
+        except discord.Forbidden as e:
+            self.logger.warn(e)
+            return
 
         embed = discord.Embed(title=f"\U000026a0 Bad member name fixed")
         embed.description = f"Original nickname '{new_nick}'"
