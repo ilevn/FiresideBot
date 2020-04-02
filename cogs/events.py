@@ -338,40 +338,44 @@ class Event(Cog):
             return
 
         if before.roles != after.roles:
-            fmt_before = clean_role_list(before)
-            fmt_after = clean_role_list(after)
+            self.logger.info(f"Before: {before.roles}")
+            self.logger.info(f"After: {after.roles}")
 
-            embed = discord.Embed()
+            if len(before.roles) != len(after.roles):
+                fmt_before = clean_role_list(before)
+                fmt_after = clean_role_list(after)
 
-            # Role removed
-            if len(fmt_before) > len(fmt_after):
-                diff = [i for (i, e) in enumerate(fmt_before) if e not in fmt_after]
+                embed = discord.Embed()
 
-                for change in diff:
-                    fmt_before[change] = f'~~{fmt_before[change]}~~'
-                embed.colour = 0xe57373
+                # Role removed
+                if len(fmt_before) > len(fmt_after):
+                    diff = [i for (i, e) in enumerate(fmt_before) if e not in fmt_after]
 
-            # Role added
-            elif len(fmt_after) > len(fmt_before):
-                diff = [i for (i, e) in enumerate(fmt_after) if e not in fmt_before]
+                    for change in diff:
+                        fmt_before[change] = f'~~{fmt_before[change]}~~'
+                    embed.colour = 0xe57373
 
-                for change in diff:
-                    fmt_after[change] = f'+__{fmt_after[change]}__'
-                embed.colour = 0x81c784
+                # Role added
+                elif len(fmt_after) > len(fmt_before):
+                    diff = [i for (i, e) in enumerate(fmt_after) if e not in fmt_before]
 
-            fmt_before = ", ".join(fmt_before)
-            fmt_after = ', '.join(fmt_after)
+                    for change in diff:
+                        fmt_after[change] = f'+__{fmt_after[change]}__'
+                    embed.colour = 0x81c784
 
-            embed.title = f"\U0001f4cb {after.name}'s roles have changed:"
-            embed.add_field(name="Before", value=f'{fmt_before} ')
-            embed.add_field(name="After", value=fmt_after)
-            embed.timestamp = datetime.utcnow()
-            try:
-                return await config.modlog.send(embed=embed)
-            except discord.HTTPException:
-                # No previous roles found.
-                # Imo, this is nicer for joins.
-                pass
+                fmt_before = ", ".join(fmt_before)
+                fmt_after = ', '.join(fmt_after)
+
+                embed.title = f"\U0001f4cb {after.name}'s roles have changed:"
+                embed.add_field(name="Before", value=f'{fmt_before} ')
+                embed.add_field(name="After", value=fmt_after)
+                embed.timestamp = datetime.utcnow()
+                try:
+                    return await config.modlog.send(embed=embed)
+                except discord.HTTPException:
+                    # No previous roles found.
+                    # Imo, this is nicer for joins.
+                    pass
 
         if before.nick != after.nick:
             if after.id in self._recent_bad_nicks:
