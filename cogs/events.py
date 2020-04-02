@@ -338,8 +338,8 @@ class Event(Cog):
             return
 
         if before.roles != after.roles:
-            self.logger.info(f"Before: {before.roles}")
-            self.logger.info(f"After: {after.roles}")
+            self.logger.info(f"Before: {[(r.name, r.position) for r in before.roles]}")
+            self.logger.info(f"After: {[(r.name, r.position) for r in after.roles]}")
 
             if len(before.roles) != len(after.roles):
                 fmt_before = clean_role_list(before)
