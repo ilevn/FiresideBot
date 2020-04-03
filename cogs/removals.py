@@ -11,7 +11,7 @@ import discord
 from discord.ext import commands
 
 from cogs.utils import db, Plural, human_timedelta, is_mod
-from cogs.utils.converters import FetchedUser
+from cogs.utils.converters import FetchedUser, entry_id
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, Pages
 from cogs.utils.punishment import Punishment, ActionType
@@ -63,20 +63,6 @@ class ActionReason(commands.Converter):
 
 
 _RemovalEntry = namedtuple("RemovalEntry", "user moderator reason")
-
-
-def entry_id(arg):
-    try:
-        arg = int(arg)
-    except ValueError:
-        raise commands.BadArgument("Please supply a valid entry ID.")
-
-    # PSQL ints are capped at 2147483647.
-    # < capped -> entry id
-    if not 0 < arg < 2147483647:
-        raise commands.BadArgument("This looks like an entry ID...")
-
-    return arg
 
 
 class RemovalPages(Pages):

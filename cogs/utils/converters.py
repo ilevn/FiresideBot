@@ -31,6 +31,7 @@ class CaselessRole(commands.IDConverter):
 
 
 class FetchedUser(commands.Converter):
+    """Converter for global user lookups by ID."""
     async def convert(self, ctx, argument):
         if not argument.isdigit():
             raise commands.BadArgument('Not a valid user ID.')
@@ -41,3 +42,17 @@ class FetchedUser(commands.Converter):
         except discord.HTTPException:
             raise commands.BadArgument('An error occurred while fetching the user.') from None
 
+
+def entry_id(arg):
+    """Converter for PostgreSQL ID lookups."""
+    try:
+        arg = int(arg)
+    except ValueError:
+        raise commands.BadArgument("Please supply a valid entry ID.")
+
+    # PSQL ints are capped at 2147483647.
+    # < capped -> entry id
+    if not 0 < arg < 2147483647:
+        raise commands.BadArgument("This looks like a user ID...")
+
+    return arg

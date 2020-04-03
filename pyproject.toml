@@ -16,6 +16,7 @@ parsedatetime = "^2.5"
 python-dateutil = "^2.8.1"
 lru_dict = "^1.1.6"
 sentry_sdk = "^0.14.2"
+regex = "^2020.2.20"
 
 [tool.poetry.dev-dependencies]
 

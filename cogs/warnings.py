@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 
 from cogs.utils import is_mod, db
-from cogs.utils.converters import FetchedUser
+from cogs.utils.converters import FetchedUser, entry_id
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate
 from cogs.utils.paginators.warning_paginator import WarningPaginator
@@ -26,18 +26,6 @@ class WarningEntry(db.Table, table_name="warning_entries"):
     warning = db.Column(db.Boolean, default=True)
     # When the warning was created.
     created = db.Column(db.Datetime, default="now() at time zone 'utc'", index=True)
-
-
-def entry_id(arg):
-    try:
-        arg = int(arg)
-    except ValueError:
-        raise commands.BadArgument("Please supply a valid entry ID.")
-
-    if not 0 < arg < 2147483647:
-        raise commands.BadArgument("This looks like a member ID...")
-
-    return arg
 
 
 ActionInformation = namedtuple("ActionInformation", "member text is_warning")
