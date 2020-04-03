@@ -19,6 +19,7 @@ class Cleaner(Cog):
         Note that the bot needs Manage Messages. These commands cannot
         be used in a private message.
         You'll get messaged once the command is done doing its work.
+        `search` is used to specify the message search span of the bot. Defaults to 100
         """
 
         if ctx.invoked_subcommand is None:
@@ -100,7 +101,6 @@ class Cleaner(Cog):
     @remove.command(name='bot')
     async def _bot(self, ctx, prefix=None, search=100):
         """Remove a bot user's messages and messages with their optional prefix."""
-
         def predicate(m):
             return m.author.bot or (prefix and m.content.startswith(prefix))
 
@@ -109,14 +109,12 @@ class Cleaner(Cog):
     @remove.command()
     async def id(self, ctx, msg_id: int, search=100):
         """Remove all messages posted after <msg_id>."""
-
         await self.do_removal(ctx, search, lambda e: True, after=msg_id)
 
     @remove.command()
-    async def between(self, ctx, start: int, end: int, search=100):
-        """Removes messages between the start and the supplied end."""
-
-        await self.do_removal(ctx, search, lambda e: True, before=end, after=start)
+    async def between(self, ctx, start_id: int, end_id: int, search=100):
+        """Removes messages between the start message id and the supplied end message id."""
+        await self.do_removal(ctx, search, lambda e: True, before=end_id, after=start_id)
 
     @remove.command()
     async def regex(self, ctx, *, regex: str, search=100):
@@ -144,7 +142,6 @@ class Cleaner(Cog):
     @remove.command(name='reactions')
     async def _reactions(self, ctx, search=100):
         """Removes all reactions from messages that have them."""
-
         if search > 2000:
             return await ctx.send(f'Too many messages to search for ({search}/2000)')
 
