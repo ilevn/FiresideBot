@@ -26,18 +26,9 @@ def is_inside_voice(state):
 StateInformation = namedtuple("StateInformation", "roles muted")
 
 
-def clean_roles(member: discord.Member):
-    return ", ".join(clean_role_list(member))
-
-
-def clean_role_list(member: discord.Member):
-    return [x.name for x in member.roles if not x.name == "@everyone"]
-
-
 def get_diff(before, after):
     dif = list(Differ().compare(before.split(' '), after.split(' ')))
-
-    return " ".join([(f'__{i[2:]}__' if i[0] == '+' else i[2:]) for i in dif if not i[0] in '-?'])
+    return " ".join((f'__{i[2:]}__' if i[0] == '+' else i[2:]) for i in dif if not i[0] in '-?')
 
 
 _SENTINEL = object()
@@ -113,7 +104,6 @@ class Event(Cog):
 
     @cache()
     async def get_guild_config(self, guild_id) -> typing.Optional[EventConfig]:
-        # Kinda ugly but works for now.
         query = """SELECT * FROM guild_config gc JOIN punishment_config pc ON gc.id = pc.id WHERE pc.id = $1"""
 
         async with self.bot.pool.acquire() as con:
@@ -133,19 +123,29 @@ class Event(Cog):
         if not config:
             return
 
-        if is_outside_voice(before) and is_inside_voice(after):
-            # Joined channel.
+        async def handle_vc_leave():
+            if channel_id := config.mappings.get(before.channel.id):
+                channel = guild.get_channel(channel_id)
+                if channel:
+                    await channel.set_permissions(member, overwrite=None)
+
+        async def handle_vc_join():
             if channel_id := config.mappings.get(after.channel.id):
                 channel = guild.get_channel(channel_id)
                 if channel:
                     await channel.set_permissions(member, read_messages=True, send_messages=True)
 
+        if is_outside_voice(before) and is_inside_voice(after):
+            # Joined channel.
+            await handle_vc_join()
         elif is_outside_voice(after) and is_inside_voice(before):
             # Left channel.
-            if channel_id := config.mappings.get(before.channel.id):
-                channel = guild.get_channel(channel_id)
-                if channel:
-                    await channel.set_permissions(member, read_messages=None, send_messages=False)
+            await handle_vc_leave()
+        elif is_inside_voice(before) and is_inside_voice(after):
+            if after.channel.id != before.channel.id:
+                # Possible channel change.
+                await handle_vc_leave()
+                await handle_vc_join()
 
     async def update_tracker(self, guild):
         config = await self.get_guild_config(guild.id)
@@ -337,45 +337,41 @@ class Event(Cog):
         if not config:
             return
 
-        if before.roles != after.roles:
-            self.logger.info(f"Before: {[(r.name, r.position) for r in before.roles]}")
-            self.logger.info(f"After: {[(r.name, r.position) for r in after.roles]}")
+        if len(before.roles) != len(after.roles):
+            fmt_before = [x.name for x in before.roles[1:]]
+            fmt_after = [x.name for x in after.roles[1:]]
 
-            if len(before.roles) != len(after.roles):
-                fmt_before = clean_role_list(before)
-                fmt_after = clean_role_list(after)
+            embed = discord.Embed()
 
-                embed = discord.Embed()
+            # Role removed
+            if len(fmt_before) > len(fmt_after):
+                diff = [i for (i, e) in enumerate(fmt_before) if e not in fmt_after]
 
-                # Role removed
-                if len(fmt_before) > len(fmt_after):
-                    diff = [i for (i, e) in enumerate(fmt_before) if e not in fmt_after]
+                for change in diff:
+                    fmt_before[change] = f'~~{fmt_before[change]}~~'
+                embed.colour = 0xe57373
 
-                    for change in diff:
-                        fmt_before[change] = f'~~{fmt_before[change]}~~'
-                    embed.colour = 0xe57373
+            # Role added
+            elif len(fmt_after) > len(fmt_before):
+                diff = [i for (i, e) in enumerate(fmt_after) if e not in fmt_before]
 
-                # Role added
-                elif len(fmt_after) > len(fmt_before):
-                    diff = [i for (i, e) in enumerate(fmt_after) if e not in fmt_before]
+                for change in diff:
+                    fmt_after[change] = f'+__{fmt_after[change]}__'
+                embed.colour = 0x81c784
 
-                    for change in diff:
-                        fmt_after[change] = f'+__{fmt_after[change]}__'
-                    embed.colour = 0x81c784
+            fmt_before = ", ".join(fmt_before)
+            fmt_after = ', '.join(fmt_after)
 
-                fmt_before = ", ".join(fmt_before)
-                fmt_after = ', '.join(fmt_after)
-
-                embed.title = f"\U0001f4cb {after.name}'s roles have changed:"
-                embed.add_field(name="Before", value=f'{fmt_before} ')
-                embed.add_field(name="After", value=fmt_after)
-                embed.timestamp = datetime.utcnow()
-                try:
-                    return await config.modlog.send(embed=embed)
-                except discord.HTTPException:
-                    # No previous roles found.
-                    # Imo, this is nicer for joins.
-                    pass
+            embed.title = f"\U0001f4cb {after.name}'s roles have changed:"
+            embed.add_field(name="Before", value=f'{fmt_before} ')
+            embed.add_field(name="After", value=fmt_after)
+            embed.timestamp = datetime.utcnow()
+            try:
+                return await config.modlog.send(embed=embed)
+            except discord.HTTPException:
+                # No previous roles found.
+                # Imo, this is nicer for joins.
+                pass
 
         if before.nick != after.nick:
             if after.id in self._recent_bad_nicks:
