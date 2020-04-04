@@ -462,7 +462,7 @@ class Filtering(Cog):
     @filter.command(name="add")
     @is_mod()
     async def filter_add(self, ctx, *, args):
-        """Configures the central bot filter system.
+        """Adds a pattern to the list of filters for this guild..
 
         This command has a powerful "command line" syntax.
 
@@ -642,7 +642,7 @@ class Filtering(Cog):
     async def filter_analyse(self, ctx, user: Optional[discord.Member] = None, *, message: discord.Message):
         """Analyse user patterns.
         You can provide a message by either using the direct jump link
-        or in the format of `{channel-id}-{message-id}."""
+        or in the format of `{channel-id}-{message-id}`."""
         user = user or message.author
         filters = await self.get_active_filters(message.guild.id)
         if not filters:
@@ -670,7 +670,7 @@ class Filtering(Cog):
     @filter.command(name="append")
     @is_mod()
     async def filter_append(self, ctx, id: entry_id, *, to_append):
-        """Append a regex to an existing entry.
+        """Appends a regex to an existing entry.
         Both entries are joined with OR."""
         query = "SELECT regex FROM spamfilter WHERE id = $1 AND guild_id = $2"
         original = await ctx.db.fetchval(query, id, ctx.guild.id)
@@ -691,7 +691,7 @@ class Filtering(Cog):
     @filter.command(name="scope")
     @is_mod()
     async def filter_scope(self, ctx, id: entry_id, *, new_scope: Scope):
-        """Change the scope of a filter entry.
+        """Changes the scope of a filter entry.
         Available options:
         - guild/server
         - user/member
@@ -723,7 +723,7 @@ class Filtering(Cog):
     @filter.command(name="debug")
     @is_mod()
     async def filter_debug(self, ctx, id: entry_id, *, string):
-        """Debug a filter"""
+        """Debugs a filter"""
 
         query = "SELECT regex FROM spamfilter WHERE id = $1 AND guild_id = $2"
         regex = await ctx.db.fetchval(query, id, ctx.guild.id)
