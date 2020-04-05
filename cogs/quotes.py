@@ -64,7 +64,6 @@ class Quotes(Cog):
 
         query = f"SELECT quote, user_id FROM quotes WHERE guild_id = $1 {subcheck}"
         records = await ctx.db.fetch(query, *args)
-
         if not records:
             await ctx.send("Could not find any quotes for this server...")
             return
@@ -76,7 +75,7 @@ class Quotes(Cog):
         entries = []
         for content, user_id in records:
             header = get_member() if not member else "Content"
-            entries.append((header, content[:1048]))
+            entries.append((header, content[:1010]))
 
         pages = FieldPages(ctx, entries=entries)
         try:
