@@ -300,7 +300,7 @@ class GuildFilter:
 
 class FilterEntity:
     __slots__ = ("id", "guild", "actions", "action_type", "entity_type", "entity_id",
-                 "regex", "created", "bot", "kwargs", "_meta_cache", "counter", "_cs_meta")
+                 "regex", "created", "bot", "kwargs", "counter", "_cs_meta")
 
     @classmethod
     def from_record(cls, record, bot):
