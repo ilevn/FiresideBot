@@ -435,8 +435,7 @@ class Event(Cog):
 
         target = getattr(punishment.target, "display_name", punishment.target)
         embed.add_field(name="Affected member", value=target, inline=False)
-        moderator = getattr(punishment.moderator, "display_name", "Unknown moderator")
-        embed.add_field(name="Responsible moderator", value=moderator, inline=False)
+        embed.add_field(name="Responsible moderator", value=punishment.moderator, inline=False)
         embed.add_field(name="Reason", value=punishment.reason or "No reason provided.", inline=False)
         embed.add_field(name="Duration", value=punishment.duration, inline=False)
         embed.timestamp = datetime.utcnow()
@@ -453,7 +452,7 @@ class Event(Cog):
                               colour=discord.Colour.green())
         target = getattr(punishment.target, "display_name", punishment.target)
         embed.add_field(name="Affected member", value=target, inline=False)
-        embed.add_field(name="Responsible moderator", value=punishment.moderator.display_name, inline=False)
+        embed.add_field(name="Responsible moderator", value=punishment.moderator, inline=False)
         embed.timestamp = datetime.utcnow()
 
         await config.punishment_channel.send(embed=embed)
