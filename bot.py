@@ -4,6 +4,7 @@ import logging
 import sys
 import traceback
 from collections import deque
+from datetime import datetime
 from itertools import cycle
 
 import aiohttp
@@ -34,6 +35,7 @@ class FiresideBot(commands.Bot):
         self.pool = None
 
         self._prev_events = deque(maxlen=10)
+        self.uptime = None
         # Hard-code Penloy and 0x1.
         self.maintainers = (320285462864461835, 189462608334553089, 292406013422993410)
         self.dev_mode = getattr(config, "dev_mode", False)
@@ -75,6 +77,7 @@ class FiresideBot(commands.Bot):
         self._prev_events.append(data)
 
     async def on_ready(self):
+        self.uptime = datetime.utcnow()
         client_id = (await self.application_info()).id
         self.logger.info(
             f"Loaded Fireside Bot, logged in as {self.user}"
