@@ -5,6 +5,7 @@ from discord.ext import commands
 
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import PaginatedHelpCommand
+from cogs.utils.paginators.urban_pages import UrbanDictionaryPages
 
 
 class Meta(Cog):
@@ -45,6 +46,35 @@ class Meta(Cog):
         msg = await ctx.send(":ping_pong: Pong!")
         after = time.monotonic()
         await msg.edit(content=f":ping_pong: Pong! | {round((after - before) * 1000, 2)}ms")
+
+    @commands.command(name="urban")
+    async def _urban(self, ctx, *, word):
+        """Searches urban dictionary."""
+
+        url = "https://api.urbandictionary.com/v0/define"
+        async with ctx.session.get(url, params={'term': word}) as resp:
+            if resp.status != 200:
+                return await ctx.send(f'An error occurred: {resp.status} {resp.reason}')
+
+            js = await resp.json()
+            data = js.get('list')
+            if not data:
+                return await ctx.send('No results found, sorry.')
+
+        try:
+            pages = UrbanDictionaryPages(ctx, data)
+            await pages.paginate()
+        except Exception as e:
+            await ctx.send(e)
+
+    @commands.command()
+    async def dogfacts(self, ctx):
+        """Gives you a random dog fact."""
+        async with ctx.session.get("https://dog-api.kinduff.com/api/facts") as resp:
+            if resp.status != 200:
+                return await ctx.send("No dog facts found :(")
+            js = await resp.json()
+            await ctx.send(f"\N{DOG FACE} **Random dog fact:**\n{js['facts'][0]}")
 
 
 setup = Meta.setup
