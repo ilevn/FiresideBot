@@ -440,7 +440,11 @@ class Event(Cog):
         embed.add_field(name="Duration", value=punishment.duration, inline=False)
         embed.timestamp = datetime.utcnow()
 
-        await config.punishment_channel.send(embed=embed)
+        msg = await config.punishment_channel.send(embed=embed)
+        if punishment.id is not None:
+            # Kick or Ban.
+            query = "UPDATE removals SET punish_message_id = $1 WHERE id = $2"
+            await self.bot.pool.execute(query, msg.id, punishment.id)
 
     @Cog.listener()
     async def on_punishment_remove(self, punishment: Punishment):
@@ -448,14 +452,17 @@ class Event(Cog):
         if not config:
             return
 
-        embed = discord.Embed(title=f"\N{SHAMROCK} {punishment.type.title} punishment lifted",
-                              colour=discord.Colour.green())
+        embed = discord.Embed(title=f"\N{SHAMROCK} {punishment.type.title}", colour=discord.Colour.green())
         target = getattr(punishment.target, "display_name", punishment.target)
         embed.add_field(name="Affected member", value=target, inline=False)
         embed.add_field(name="Responsible moderator", value=punishment.moderator, inline=False)
         embed.timestamp = datetime.utcnow()
 
-        await config.punishment_channel.send(embed=embed)
+        msg = await config.punishment_channel.send(embed=embed)
+        if punishment.id is not None:
+            # Unban.
+            query = "UPDATE removals SET punish_message_id = $1 WHERE id = $2"
+            await self.bot.pool.execute(query, msg.id, punishment.id)
 
 
 setup = Event.setup

@@ -17,13 +17,14 @@ class ActionType(Enum):
 
 class Punishment:
     """A punishment model used by `on_punishment_add` and `on_punishment_remove`."""
-    __slots__ = ("guild", "target", "moderator", "duration", "reason", "type")
+    __slots__ = ("guild", "target", "moderator", "duration", "reason", "type", "id")
 
     def __init__(self, guild: discord.Guild, target: discord.Member, moderator: discord.Member,
-                 type_: ActionType, reason=None, duration=None):
+                 type_: ActionType, reason=None, duration=None, id=None):
         self.guild = guild
         self.target = target
         self.moderator = moderator
         self.duration = duration or "Indefinite"
         self.reason = reason
         self.type = type_
+        self.id = id
