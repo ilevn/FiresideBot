@@ -68,29 +68,31 @@ def human_timedelta(dt, *, source=None, accuracy=3, brief=False, suffix=True):
 
 
 class ShortTime:
-    compiled = re.compile("""(?:(?P<years>[0-9])(?:years?|y))?             # e.g. 4y
-                             (?:(?P<months>[0-9]{1,2})(?:months?|mo))?     # e.g. 5months
-                             (?:(?P<weeks>[0-9]{1,4})(?:weeks?|w))?        # e.g. 12w
-                             (?:(?P<days>[0-9]{1,5})(?:days?|d))?          # e.g. 31d
-                             (?:(?P<hours>[0-9]{1,5})(?:hours?|h))?        # e.g. 12h
-                             (?:(?P<minutes>[0-9]{1,5})(?:minutes?|min|m))?    # e.g. 5m
-                             (?:(?P<seconds>[0-9]{1,5})(?:seconds?|s))?    # e.g. 15s
+    compiled = re.compile("""(?:(?P<years>[0-9])(?:years?|y))?               # e.g. 4y
+                             (?:(?P<months>[0-9]{1,2})(?:months?|mo))?       # e.g. 5months
+                             (?:(?P<weeks>[0-9]{1,4})(?:weeks?|w))?          # e.g. 12w
+                             (?:(?P<days>[0-9]{1,5})(?:days?|d))?            # e.g. 31d
+                             (?:(?P<hours>[0-9]{1,5})(?:hours?|h))?          # e.g. 12h
+                             (?:(?P<minutes>[0-9]{1,5})(?:minutes?|min|m))?  # e.g. 5m
+                             (?:(?P<seconds>[0-9]{1,5})(?:seconds?|s))?      # e.g. 15s
                           """, re.VERBOSE)
 
     date_compiled = re.compile(
-        r"(?:(?P<day>0?[1-9]|[12][0-9]|3[01])[/\-.](?P<month>0?[1-9]|1[012])[/\-.](?P<year>\d{4}))?")
+        r"(?:(?P<day>0?[1-9]|[12][0-9]|3[01])([/\-.])(?P<month>0?[1-9]|1[012])\2(?P<year>\d{4}))?")
 
     def __init__(self, argument):
         match = self.compiled.fullmatch(argument)
-        if match is None or not match.group(0):
-            # Try to match a date.
-            date_match = self.date_compiled.match(argument)
-            if date_match is None or not date_match.group(0):
+        if match and match.group(0):
+            data = {k: int(v) for k, v in match.groupdict(default=0).items()}
+            now = datetime.utcnow()
+            self.dt = now + relativedelta(**data)
+        else:
+            match = self.date_compiled.fullmatch(argument)
+            if match is None or not match.group(0):
                 raise commands.BadArgument("invalid time provided")
-
-        data = {k: int(v) for k, v in match.groupdict(default=0).items()}
-        now = datetime.utcnow()
-        self.dt = now + relativedelta(**data) if match or match.group(0) else datetime.date(**data)
+            # Argument is a date.
+            data = {k: int(v) for k, v in match.groupdict(default=0).items()}
+            self.dt = date(**data)
 
 
 class HumanTime:
