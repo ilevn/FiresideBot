@@ -41,6 +41,7 @@ class Quotes(Cog):
         query = """SELECT quote FROM quotes WHERE guild_id = $1 AND user_id = $2 ORDER BY random() LIMIT 1"""
         quote = await ctx.db.fetchval(query, ctx.guild.id, member.id)
         if not quote:
+            await ctx.send(f"Could not find a quote for {member}.")
             return
 
         member_name = getattr(member, "display_name", str(member))
