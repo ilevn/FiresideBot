@@ -10,7 +10,6 @@ import aiohttp
 import discord
 import logbook
 from discord.ext import commands
-from discord.ext.commands import Bot
 from logbook import StreamHandler
 from logbook.compat import redirect_logging
 from sentry_sdk import init as sen_init, configure_scope as sen_configure_scope, capture_exception
@@ -19,11 +18,10 @@ import config
 from cogs.utils.context import Context
 
 redirect_logging()
-
 StreamHandler(sys.stderr).push_application()
 
 
-class FiresideBot(Bot):
+class FiresideBot(commands.Bot):
     def __init__(self, command_prefix, **options):
         super().__init__(command_prefix, **options)
 
@@ -36,13 +34,10 @@ class FiresideBot(Bot):
         self.pool = None
 
         self._prev_events = deque(maxlen=10)
-        self._owner_id = None
         # Hard-code Penloy and 0x1.
         self.maintainers = (320285462864461835, 189462608334553089, 292406013422993410)
         self.dev_mode = getattr(config, "dev_mode", False)
-        self._app_id = None
         # Start the game status cycle task.
-        self.status = cycle(["Communism", "With Stalin", "and Chilling"])
         self.loop.create_task(self.change_status())
         # Support for sentry.
         self.sentry = None
@@ -67,38 +62,26 @@ class FiresideBot(Bot):
 
     @property
     def config(self):
-        try:
-            return __import__("config")
-        except ImportError:
-            self.logger.critical("Config is missing. Please copy one over from "
-                                 "config.example.py to config.py")
-            exit(1)
+        return __import__("config")
 
     async def change_status(self):
         await self.wait_until_ready()
+        status = cycle(["Communism", "With Stalin", "and Chilling"])
         while True:
-            await self.change_presence(activity=discord.Game(next(self.status)))
+            await self.change_presence(activity=discord.Game(next(status)))
             await asyncio.sleep(10)
 
     async def on_socket_response(self, data):
         self._prev_events.append(data)
 
     async def on_ready(self):
-        try:
-            app_info = await self.application_info()
-            # We log these as back-up for `self.owner_id` + app_info
-            self._owner_id = app_info.owner.id
-            self._app_id = app_info.id
-        except discord.HTTPException:
-            self.logger.warn("Could not fetch regular owner info. Defaulting to MFA provided owner.")
-
+        client_id = (await self.application_info()).id
         self.logger.info(
-            f"Loaded Fireside Bot, logged in as {self.user.name}#{self.user.discriminator}"
-            f".\nInvite link: {discord.utils.oauth_url(self._app_id, discord.Permissions(8))}")
+            f"Loaded Fireside Bot, logged in as {self.user}"
+            f".\nInvite link: {discord.utils.oauth_url(client_id, discord.Permissions(8))}")
 
     async def process_commands(self, message):
         ctx = await self.get_context(message, cls=Context)
-
         if ctx.command is None:
             return
 
@@ -141,21 +124,22 @@ class FiresideBot(Bot):
             await ctx.send(error)
 
     async def on_error(self, event, *args, **kwargs):
-        if self.sentry is not None:
-            # Get additional information in regard to our event.
-            data = {
-                "Event": event,
-                **{f"Argument {i}": arg for i, arg in enumerate(args, 1)}
-            }
-
-            with sen_configure_scope() as scope:
-                scope.set_context("Event information", data)
-                # For some reason, this doesn't get cleared.
-                scope.remove_context("Invoker Information")
-                # sys.exc_info() is used under the hood.
-                capture_exception()
-        else:
+        if self.sentry is None:
             traceback.print_exc()
+            return
+
+        # Get additional information in regard to our event.
+        data = {
+            "Event": event,
+            **{f"Argument {i}": arg for i, arg in enumerate(args, 1)}
+        }
+
+        with sen_configure_scope() as scope:
+            scope.set_context("Event information", data)
+            # For some reason, this doesn't get cleared.
+            scope.remove_context("Invoker Information")
+            # sys.exc_info() is used under the hood.
+            capture_exception()
 
     def run(self):
         try:
