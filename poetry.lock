@@ -77,18 +77,18 @@ version = "7.0"
 
 [[package]]
 category = "main"
-description = "A python wrapper for the Discord API"
+description = "A Python wrapper for the Discord API"
 name = "discord.py"
 optional = false
 python-versions = ">=3.5.3"
-version = "1.3.1"
+version = "1.3.3"
 
 [package.dependencies]
 aiohttp = ">=3.6.0,<3.7.0"
 websockets = ">=6.0,<7.0 || >7.0,<8.0 || >8.0,<8.0.1 || >8.0.1,<9.0"
 
 [package.extras]
-docs = ["sphinx (1.8.5)", "sphinxcontrib-trio (1.1.0)", "sphinxcontrib-websupport"]
+docs = ["sphinx (1.8.5)", "sphinxcontrib-trio (1.1.1)", "sphinxcontrib-websupport"]
 voice = ["PyNaCl (1.3.0)"]
 
 [[package]]
@@ -141,6 +141,17 @@ name = "parsedatetime"
 optional = false
 python-versions = "*"
 version = "2.5"
+
+[[package]]
+category = "main"
+description = "Cross-platform lib for process and system monitoring in Python."
+name = "psutil"
+optional = false
+python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+version = "5.7.0"
+
+[package.extras]
+enum = ["enum34"]
 
 [[package]]
 category = "main"
@@ -237,7 +248,7 @@ idna = ">=2.0"
 multidict = ">=4.0"
 
 [metadata]
-content-hash = "d1c439e395a84e0aeb3d94b0e0b67b128edaf79045c078db8bfa462036711a55"
+content-hash = "4744be8f2897c9fc7d59423f050dd7207742fc4e5d2fd31817036d1b01520a78"
 python-versions = "^3.8"
 
 [metadata.files]
@@ -299,7 +310,8 @@ click = [
     {file = "Click-7.0.tar.gz", hash = "sha256:5b94b49521f6456670fdb30cd82a4eca9412788a93fa6dd6df72c94d5a8ff2d7"},
 ]
 "discord.py" = [
-    {file = "discord.py-1.3.1-py3-none-any.whl", hash = "sha256:8bfe5628d31771744000f19135c386c74ac337479d7282c26cc1627b9d31f360"},
+    {file = "discord.py-1.3.3-py3-none-any.whl", hash = "sha256:406871b06d86c3dc49fba63238519f28628dac946fef8a0e22988ff58ec05580"},
+    {file = "discord.py-1.3.3.tar.gz", hash = "sha256:ad00e34c72d2faa8db2157b651d05f3c415d7d05078e7e41dc9e8dc240051beb"},
 ]
 idna = [
     {file = "idna-2.8-py2.py3-none-any.whl", hash = "sha256:ea8b7f6188e6fa117537c3df7da9fc686d485087abf6ac197f9c46432f7e4a3c"},
@@ -341,6 +353,19 @@ multidict = [
 parsedatetime = [
     {file = "parsedatetime-2.5-py2-none-any.whl", hash = "sha256:3b835fc54e472c17ef447be37458b400e3fefdf14bb1ffdedb5d2c853acf4ba1"},
     {file = "parsedatetime-2.5.tar.gz", hash = "sha256:d2e9ddb1e463de871d32088a3f3cea3dc8282b1b2800e081bd0ef86900451667"},
+]
+psutil = [
+    {file = "psutil-5.7.0-cp27-none-win32.whl", hash = "sha256:298af2f14b635c3c7118fd9183843f4e73e681bb6f01e12284d4d70d48a60953"},
+    {file = "psutil-5.7.0-cp27-none-win_amd64.whl", hash = "sha256:75e22717d4dbc7ca529ec5063000b2b294fc9a367f9c9ede1f65846c7955fd38"},
+    {file = "psutil-5.7.0-cp35-cp35m-win32.whl", hash = "sha256:f344ca230dd8e8d5eee16827596f1c22ec0876127c28e800d7ae20ed44c4b310"},
+    {file = "psutil-5.7.0-cp35-cp35m-win_amd64.whl", hash = "sha256:e2d0c5b07c6fe5a87fa27b7855017edb0d52ee73b71e6ee368fae268605cc3f5"},
+    {file = "psutil-5.7.0-cp36-cp36m-win32.whl", hash = "sha256:a02f4ac50d4a23253b68233b07e7cdb567bd025b982d5cf0ee78296990c22d9e"},
+    {file = "psutil-5.7.0-cp36-cp36m-win_amd64.whl", hash = "sha256:1413f4158eb50e110777c4f15d7c759521703bd6beb58926f1d562da40180058"},
+    {file = "psutil-5.7.0-cp37-cp37m-win32.whl", hash = "sha256:d008ddc00c6906ec80040d26dc2d3e3962109e40ad07fd8a12d0284ce5e0e4f8"},
+    {file = "psutil-5.7.0-cp37-cp37m-win_amd64.whl", hash = "sha256:73f35ab66c6c7a9ce82ba44b1e9b1050be2a80cd4dcc3352cc108656b115c74f"},
+    {file = "psutil-5.7.0-cp38-cp38-win32.whl", hash = "sha256:60b86f327c198561f101a92be1995f9ae0399736b6eced8f24af41ec64fb88d4"},
+    {file = "psutil-5.7.0-cp38-cp38-win_amd64.whl", hash = "sha256:d84029b190c8a66a946e28b4d3934d2ca1528ec94764b180f7d6ea57b0e75e26"},
+    {file = "psutil-5.7.0.tar.gz", hash = "sha256:685ec16ca14d079455892f25bd124df26ff9137664af445563c1bd36629b5e0e"},
 ]
 python-dateutil = [
     {file = "python-dateutil-2.8.1.tar.gz", hash = "sha256:73ebfe9dbf22e832286dafa60473e4cd239f8592f699aa5adaf10050e6e1823c"},
