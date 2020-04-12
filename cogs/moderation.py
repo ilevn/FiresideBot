@@ -1,10 +1,7 @@
-from typing import Union
-
 import discord
 from discord.ext import commands
 
 from cogs.utils import is_mod, human_timedelta
-from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 
 
@@ -26,18 +23,6 @@ class Moderation(Cog):
             body = f'joined {human_timedelta(member.joined_at)}, created {human_timedelta(member.created_at)}'
             embed.add_field(name=f'{member} (ID: {member.id})', value=body, inline=False)
 
-        await ctx.send(embed=embed)
-
-    @commands.command(aliases=["avatar"])
-    @is_mod()
-    async def avy(self, ctx, *, user: Union[discord.Member, FetchedUser] = None):
-        """Shows the avatar of a user.
-        This displays your avatar by default."""
-        embed = discord.Embed()
-        user = user or ctx.author
-        avatar = user.avatar_url_as(static_format='png')
-        embed.set_author(name=str(user), url=avatar)
-        embed.set_image(url=avatar)
         await ctx.send(embed=embed)
 
 

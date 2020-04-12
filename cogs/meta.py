@@ -1,8 +1,11 @@
 import time
 import unicodedata
+from typing import Union
 
+import discord
 from discord.ext import commands
 
+from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import PaginatedHelpCommand
 from cogs.utils.paginators.urban_pages import UrbanDictionaryPages
@@ -70,8 +73,20 @@ class Meta(Cog):
         async with ctx.session.get("https://dog-api.kinduff.com/api/facts") as resp:
             if resp.status != 200:
                 return await ctx.send("No dog facts found :(")
+
             js = await resp.json()
             await ctx.send(f"\N{DOG FACE} **Random dog fact:**\n{js['facts'][0]}")
+
+    @commands.command(aliases=["avatar"])
+    async def avy(self, ctx, *, user: Union[discord.Member, FetchedUser] = None):
+        """Shows the avatar of a user.
+        This displays your avatar by default."""
+        embed = discord.Embed()
+        user = user or ctx.author
+        avatar = user.avatar_url_as(static_format='png')
+        embed.set_author(name=str(user), url=avatar)
+        embed.set_image(url=avatar)
+        await ctx.send(embed=embed)
 
 
 setup = Meta.setup
