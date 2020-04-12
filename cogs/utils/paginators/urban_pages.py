@@ -34,7 +34,8 @@ class UrbanDictionaryPages(Pages):
         self.embed = e = discord.Embed(colour=0xE86222, title=title, url=entry['permalink'])
         e.set_footer(text=f'by {entry["author"]}')
         e.description = self.cleanup_entry(entry['definition'])
-        e.add_field(name="Example", value=self.cleanup_entry(entry.get('example', 'No example provided.')))
+        if example := entry["example"]:
+            e.add_field(name="Example", value=self.cleanup_entry(example))
 
         try:
             up, down = entry['thumbs_up'], entry['thumbs_down']
