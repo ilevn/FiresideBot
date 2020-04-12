@@ -21,10 +21,7 @@ class Meta(Cog):
         self.bot.help_command = self.old_help_command
 
     async def cog_check(self, ctx):
-        if ctx.guild is None:
-            return False
-
-        return True
+        return bool(ctx.guild)
 
     @commands.command()
     async def charinfo(self, ctx, *, characters: str):
@@ -47,7 +44,7 @@ class Meta(Cog):
         after = time.monotonic()
         await msg.edit(content=f":ping_pong: Pong! | {round((after - before) * 1000, 2)}ms")
 
-    @commands.command(name="urban")
+    @commands.command(name="urban", aliases=["whatis"])
     async def _urban(self, ctx, *, word):
         """Searches urban dictionary."""
 
