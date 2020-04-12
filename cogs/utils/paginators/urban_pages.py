@@ -15,7 +15,7 @@ class UrbanDictionaryPages(Pages):
         return self.entries[page - 1]
 
     @staticmethod
-    def cleanup_definition(definition, *, regex=BRACKETED):
+    def cleanup_entry(definition, *, regex=BRACKETED):
         def repl(m):
             word = m.group(2)
             return f'[{word}](http://{word.replace(" ", "-")}.urbanup.com)'
@@ -33,8 +33,8 @@ class UrbanDictionaryPages(Pages):
 
         self.embed = e = discord.Embed(colour=0xE86222, title=title, url=entry['permalink'])
         e.set_footer(text=f'by {entry["author"]}')
-        e.description = self.cleanup_definition(entry['definition'])
-        e.add_field(name="Example", value=entry.get('example', 'No example given.'))
+        e.description = self.cleanup_entry(entry['definition'])
+        e.add_field(name="Example", value=self.cleanup_entry(entry.get('example', 'No example provided.')))
 
         try:
             up, down = entry['thumbs_up'], entry['thumbs_down']
