@@ -455,5 +455,11 @@ class Stats(Cog):
         for page in paginator.pages:
             await ctx.send(page)
 
+    @commands.command()
+    async def uptime(self, ctx):
+        """Tells you how long the bot has been up for."""
+        up_for = human_timedelta(self.bot.uptime, accuracy=None, suffix=False)
+        await ctx.send(f'Uptime: **{up_for}**')
+
 
 setup = Stats.setup
