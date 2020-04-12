@@ -199,6 +199,11 @@ class Stats(Cog):
 
         await ctx.send(embed=e)
 
+    @info.error
+    async def avy_error(self, ctx, error):
+        if isinstance(error, commands.BadUnionArgument):
+            await ctx.send("Couldn't find that user...")
+
     @staticmethod
     async def show_guild_stats(ctx):
         lookup = (

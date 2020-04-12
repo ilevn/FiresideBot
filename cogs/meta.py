@@ -88,5 +88,10 @@ class Meta(Cog):
         embed.set_image(url=avatar)
         await ctx.send(embed=embed)
 
+    @avy.error
+    async def avy_error(self, ctx, error):
+        if isinstance(error, commands.BadUnionArgument):
+            await ctx.send("Couldn't find that user...")
+
 
 setup = Meta.setup
