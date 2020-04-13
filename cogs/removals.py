@@ -214,8 +214,9 @@ class Removals(Cog):
         record = await self.bot.pool.fetchrow(query, info.user.id, mod_id, info.reason,
                                               guild.id, str(member), type_.value)
 
-        modlog = await self.get_modlog(guild.id)
-        if not modlog:
+        event_cog = self.bot.get_cog("Event")
+        config = event_cog and await event_cog.get_guild_config(guild.id)
+        if not (config and config.modlog):
             # Don't send, I guess.
             self.bot.logger.warn("Removal event failed to send...")
             return
@@ -226,9 +227,24 @@ class Removals(Cog):
         e_id = record[0]
         embed = self.format_modlog_entry(member, responsible_mod, formatter, type_.colour, e_id, reason)
         # Finally, log the new message to allow mods to edit it later.
-        msg = await modlog.send(embed=embed)
+        msg = await config.modlog.send(embed=embed)
         query = """UPDATE removals SET message_id = $1 WHERE id = $2"""
         await self.bot.pool.execute(query, msg.id, record[0])
+        # Remind mods to provide a reason if none is set.
+        if not reason and config.mod_channel:
+            prefix = self.bot.command_prefix
+            if responsible_mod:
+                action = "unbanning" if type_ is RemovalType.UNBAN else "getting rid of"
+                fmt = f"Hey {responsible_mod.mention}!" \
+                      f" I noticed you haven't specified a reason for {action} {member} yet...\n" \
+                      f"Please do so by typing `{prefix}reason {e_id}`, thank you."
+            else:
+                action = "unbanned" if type_ is RemovalType.UNBAN else "got rid of"
+                fmt = f"@here I'm not sure who {action} {member} but his entry is missing a reason...\n" \
+                      f"Please specify one by typing `{prefix}reason {e_id}`, thank you."
+
+            await config.mod_channel.send(fmt)
+
         # Also dispatch to #punishment channel.
         action_type = type_.action_type
         punishment = Punishment(guild, member, responsible_mod, action_type, reason or "No reason provided.", id=e_id)
@@ -283,7 +299,7 @@ class Removals(Cog):
 
         event_cog = self.bot.get_cog("Event")
         config = event_cog and await event_cog.get_guild_config(ctx.guild.id)
-        if not config and config.modlog:
+        if not (config and config.modlog):
             return await ctx.send("Could not find modlog channel. Aborting...", delete_after=3)
 
         try:
@@ -308,6 +324,7 @@ class Removals(Cog):
                 self.logger.warn(f"Removal entry {id} is missing a punishment message.")
             else:
                 embed = message.embeds[0]
+                embed.set_field_at(1, name="Moderator", value=ctx.author, inline=False)
                 embed.set_field_at(-2, name="Reason", value=reason)
                 await message.edit(embed=embed)
 
