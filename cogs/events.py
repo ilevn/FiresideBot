@@ -433,9 +433,9 @@ class Event(Cog):
         embed = discord.Embed(title=f"\N{WARNING SIGN} New {punishment.type.title} punishment",
                               colour=discord.Colour.red())
 
-        target = getattr(punishment.target, "display_name", punishment.target)
-        embed.add_field(name="Affected member", value=target, inline=False)
-        embed.add_field(name="Responsible moderator", value=punishment.moderator, inline=False)
+        embed.add_field(name="Affected member", value=punishment.target, inline=False)
+        moderator = punishment.moderator or "No responsible moderator"
+        embed.add_field(name="Responsible moderator", value=moderator, inline=False)
         embed.add_field(name="Reason", value=punishment.reason or "No reason provided.", inline=False)
         embed.add_field(name="Duration", value=punishment.duration, inline=False)
         embed.timestamp = datetime.utcnow()
