@@ -5,6 +5,7 @@ from typing import Union
 import discord
 from discord.ext import commands
 
+from cogs.utils import mod_cooldown
 from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import PaginatedHelpCommand
@@ -41,7 +42,10 @@ class Meta(Cog):
         await ctx.send(msg)
 
     @commands.command()
+    @mod_cooldown(1, 10 * 60, commands.BucketType.member)
     async def ping(self, ctx):
+        """Pings the bot."""
+
         before = time.monotonic()
         msg = await ctx.send(":ping_pong: Pong!")
         after = time.monotonic()

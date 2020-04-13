@@ -1,9 +1,6 @@
 from discord.ext import commands
 
 
-# TODO: Dedicated bot admin roles?
-# DB integration with cached roles.
-
 async def check_guild_permissions(ctx, perms, *, check=all):
     is_owner = await ctx.bot.is_owner(ctx.author)
     if is_owner:
@@ -37,3 +34,32 @@ async def maintainer_check(ctx):
 
 def is_maintainer():
     return commands.check(maintainer_check)
+
+
+class PredicateCooldown:
+    """Custom cooldown class to bypass a cooldown based on a predicate.."""
+
+    def __init__(self, rate, per, bucket, predicate):
+        self.predicate = predicate
+        self.mapping = commands.CooldownMapping.from_cooldown(rate, per, bucket)
+
+    def __call__(self, ctx):
+        if self.predicate(ctx):
+            return True
+
+        bucket = self.mapping.get_bucket(ctx.message)
+        retry_after = bucket.update_rate_limit()
+        if retry_after:
+            raise commands.CommandOnCooldown(bucket, retry_after)
+        return True
+
+
+def predicate_cooldown(rate, per, bucket, pred):
+    return commands.check(PredicateCooldown(rate, per, bucket, pred))
+
+
+def mod_cooldown(rate, per, bucket):
+    def pred(ctx):
+        return ctx.author.guild_permissions.manage_guild is True
+
+    return predicate_cooldown(rate, per, bucket, pred)
