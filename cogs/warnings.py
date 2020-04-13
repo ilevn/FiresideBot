@@ -3,12 +3,13 @@ from collections import namedtuple
 from typing import Union
 
 import discord
+from discord.ext import commands
+
 from cogs.utils import is_mod, db
 from cogs.utils.converters import FetchedUser, entry_id
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate
 from cogs.utils.paginators.warning_paginator import WarningPaginator
-from discord.ext import commands
 
 
 class WarningEntry(db.Table, table_name="warning_entries"):
@@ -28,6 +29,22 @@ class WarningEntry(db.Table, table_name="warning_entries"):
 
 
 ActionInformation = namedtuple("ActionInformation", "member text is_warning")
+
+
+def mod_chat_only():
+    """Ensures a command only gets invoked within a mod chat."""
+    async def pred(ctx):
+        overwrites = ctx.channel.overwrites_for(ctx.guild.default_role)
+        if overwrites.read_messages is False:
+            return True
+        raise PublicChannelError()
+
+    return commands.check(pred)
+
+
+class PublicChannelError(commands.CheckFailure):
+    def __init__(self):
+        super().__init__("This command can only be invoked from a mod channel.")
 
 
 class Warnings(Cog):
@@ -82,9 +99,16 @@ class Warnings(Cog):
         member = information.member
         type_ = "warning" if information.is_warning else "note"
 
+        if information.is_warning:
+            confirm = await ctx.prompt(f"Please confirm that {member} was verbally and formally"
+                                       f" warned before you continue.")
+            if not confirm:
+                await ctx.send("Aborting...", delete_after=3)
+                return
+
         if not text:
             # Interactive warning.
-            text = await self._interactive_invocation(ctx, information.member, information.is_warning)
+            text = await self._interactive_invocation(ctx, member, information.is_warning)
             if not text:
                 return
 
@@ -110,16 +134,24 @@ class Warnings(Cog):
         await config.mod_channel.send(embed=embed)
 
     @warn.command(name="issue")
+    @mod_chat_only()
     async def warn_issue(self, ctx, member: discord.Member, *, text: str = None):
-        """Creates a warning for a user.
+        """Creates a warning for a user. Intended for use in mod chats only.
         Providing text skips all database checks and straight up adds a new entry."""
         await self.take_action(ctx, ActionInformation(member, text, is_warning=True))
 
     @warn.command(name="note")
+    @mod_chat_only()
     async def warn_note(self, ctx, member: discord.Member, *, text: str = None):
-        """Adds a note for a user.
+        """Adds a note for a user. Intended for use in mod chats only.
         Providing text skips all database checks and straight up adds a new entry."""
         await self.take_action(ctx, ActionInformation(member, text, is_warning=False))
+
+    @warn_issue.error
+    @warn_note.error
+    async def warn_issue_error(self, ctx, error):
+        if isinstance(error, PublicChannelError):
+            await ctx.send(error)
 
     @staticmethod
     async def get_info(id_, ctx):
