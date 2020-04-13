@@ -99,7 +99,7 @@ class Warnings(Cog):
             return
 
         config = await cog.get_guild_config(ctx.guild.id)
-        if not config and config.mod_channel:
+        if not (config and config.mod_channel):
             return
 
         embed = discord.Embed(title=f"\U00002139 {ctx.author} created a new {type_}")
