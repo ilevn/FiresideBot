@@ -374,6 +374,9 @@ class Event(Cog):
                 pass
 
         if before.nick != after.nick:
+            if after.bot:
+                return
+
             if after.id in self._recent_bad_nicks:
                 # We triggered this event.
                 self._recent_bad_nicks.remove(after.id)
