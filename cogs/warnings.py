@@ -3,13 +3,12 @@ from collections import namedtuple
 from typing import Union
 
 import discord
-from discord.ext import commands
-
 from cogs.utils import is_mod, db
 from cogs.utils.converters import FetchedUser, entry_id
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate
 from cogs.utils.paginators.warning_paginator import WarningPaginator
+from discord.ext import commands
 
 
 class WarningEntry(db.Table, table_name="warning_entries"):
@@ -43,8 +42,7 @@ class Warnings(Cog):
 
     @staticmethod
     async def _interactive_invocation(ctx, member: discord.Member, is_warning=True):
-        # Delete invocation messages to make it less spammy
-        to_delete = [ctx.message]
+        to_delete = []
         try:
             page = await WarningPaginator.from_member(ctx, member, short_view=True)
             await page.paginate()
@@ -89,14 +87,12 @@ class Warnings(Cog):
             text = await self._interactive_invocation(ctx, information.member, information.is_warning)
             if not text:
                 return
-        else:
-            await ctx.message.delete()
 
         query = """INSERT INTO warning_entries (member_id, moderator_id, guild_id, information, warning)
                    VALUES ($1, $2, $3, $4, $5) RETURNING id"""
 
         status = await ctx.db.fetchval(query, member.id, ctx.author.id, ctx.guild.id, text, information.is_warning)
-        await ctx.send(f"OK. Added new {type_} for {member}", delete_after=3)
+        await ctx.send(f"OK. Added new {type_} for {member}")
 
         cog = ctx.bot.get_cog("Event")
         if not cog:
