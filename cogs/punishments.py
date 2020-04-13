@@ -173,14 +173,4 @@ class Punishments(Cog):
         await ctx.send(f"Punishment for {member} was successfully cancelled.")
 
 
-"""
-Punishments:
-- Ban -> user, mod, reason, duration
-- Kick -> see above
-- Shitposted -> see above
-- Jailed -> see above
-
-== Type, target, mod, reason, duration
-"""
-
 setup = Punishments.setup
