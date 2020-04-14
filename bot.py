@@ -124,7 +124,7 @@ class FiresideBot(commands.Bot):
                     capture_exception(original)
 
         elif isinstance(error, (commands.ArgumentParsingError, commands.CommandOnCooldown)) or self.dev_mode:
-            await ctx.send(f"Dev mode: {error}")
+            await ctx.send(f"{'Dev mode: ' if self.dev_mode else ''}{error}")
 
     async def on_error(self, event, *args, **kwargs):
         if self.sentry is None:
