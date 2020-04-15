@@ -5,10 +5,10 @@ from enum import IntEnum
 from typing import Optional
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from cogs.utils import human_timedelta, is_mod, db
-from cogs.utils.cache import cache
+from cogs.utils.cache import cache, ExpiringCache
 from cogs.utils.meta_cog import Cog
 
 
@@ -27,8 +27,7 @@ class GuildRaidConfig(db.Table, table_name="guild_raid_config"):
     raid_mode = db.Column(db.Integer(small=True))
     # Broadcast channel for raid messages.
     broadcast_channel = db.Column(db.Integer(big=True))
-    # Amount of mentions a member is allowed to use before
-    # being punished in raid mode.
+    # Amount of mentions a member is allowed to use before getting banned.
     mention_count = db.Column(db.Integer(small=True))
     # Channels excluded from mention bans.
     safe_mention_channel_ids = db.Column(db.Array(db.Integer(big=True)))
@@ -53,11 +52,19 @@ class SpamChecker:
         self.last_join = None
         self.new_user = commands.CooldownMapping.from_cooldown(30, 35.0, commands.BucketType.channel)
 
+        self.fast_joiners = ExpiringCache(seconds=1800.0)
+        self.hit_and_run = commands.CooldownMapping.from_cooldown(10, 12.0, commands.BucketType.channel)
+
     def is_spamming(self, message):
         if message.guild is None:
             return False
 
         current = message.created_at.replace(tzinfo=datetime.timezone.utc).timestamp()
+
+        if message.author.id in self.fast_joiners:
+            bucket = self.hit_and_run.get_bucket(message)
+            if bucket.update_rate_limit(current):
+                return True
 
         if is_new(message.author):
             new_bucket = self.new_user.get_bucket(message)
@@ -81,6 +88,8 @@ class SpamChecker:
             return False
         is_fast = (joined - self.last_join).total_seconds() <= 2.0
         self.last_join = joined
+        if is_fast:
+            self.fast_joiners[member.id] = True
         return is_fast
 
 
@@ -106,7 +115,7 @@ class RaidConfig:
         return guild and guild.get_channel(self.broadcast_channel_id)
 
 
-# This is inspired by Danny"s raid handling and
+# This is inspired by Danny's raid handling and
 # includes partial source code licenced under MIT.
 class RaidControl(Cog):
     """Central raid control of the bot."""
@@ -115,19 +124,41 @@ class RaidControl(Cog):
         super().__init__(bot)
         self._spam_checker = defaultdict(SpamChecker)
         self._disable_lock = asyncio.Lock(loop=bot.loop)
+        # Keep a (guild_id, channel_id) -> List[str] mapping for messages.
+        self.message_batches = defaultdict(list)
+        self._batch_message_lock = asyncio.Lock(loop=bot.loop)
+        self.bulk_send_messages.start()
 
     async def cog_check(self, ctx):
-        if ctx.guild is None:
-            return False
-
-        return True
+        return bool(ctx.guild)
 
     @cache()
     async def get_raid_config(self, guild_id):
-        query = """SELECT * FROM guild_raid_config WHERE id=$1;"""
+        query = """SELECT * FROM guild_raid_config WHERE id = $1"""
         async with self.bot.pool.acquire() as con:
             record = await con.fetchrow(query, guild_id)
             return record and await RaidConfig.from_record(record, self.bot)
+
+    @tasks.loop(seconds=10.0)
+    async def bulk_send_messages(self):
+        async with self._batch_message_lock:
+            for (guild_id, channel_id), messages in self.message_batches.items():
+                guild = self.bot.get_guild(guild_id)
+                channel = guild and guild.get_channel(channel_id)
+                if channel is None:
+                    continue
+
+                paginator = commands.Paginator(suffix="", prefix="")
+                for message in messages:
+                    paginator.add_line(message)
+
+                for page in paginator.pages:
+                    try:
+                        await channel.send(page)
+                    except discord.HTTPException:
+                        pass
+
+            self.message_batches.clear()
 
     async def check_raid(self, config, guild_id, member, message):
         if config.raid_mode != RaidMode.strict.value:
@@ -162,10 +193,6 @@ class RaidControl(Cog):
         if author.bot:
             return
 
-        # This only applies to members without roles for now.
-        if len(author.roles) > 0:
-            return
-
         guild_id = message.guild.id
         if (config := await self.get_raid_config(guild_id)) is None:
             return
@@ -194,7 +221,9 @@ class RaidControl(Cog):
         except Exception:
             self.logger.info(f"Failed to autoban member {author} (ID: {author.id}) in guild ID {guild_id}")
         else:
-            await message.channel.send(f"Banned {author} (ID: {author.id}) for spamming {mention_count} mentions.")
+            to_send = f"Banned {author} (ID: {author.id}) for spamming {mention_count} mentions."
+            async with self._batch_message_lock:
+                self.message_batches[(guild_id, message.channel.id)].append(to_send)
             self.logger.info(f"Member {author} (ID: {author.id}) has been autobanned from guild ID {guild_id}")
 
     async def on_member_join(self, member):
@@ -228,7 +257,7 @@ class RaidControl(Cog):
                 title = "Member Joined (Very New Member)"
 
         e = discord.Embed(title=title, colour=colour)
-        e.set_author(name=str(member), icon_url=member.avatar_url).timestamp = now
+        e.set_author(name=member, icon_url=member.avatar_url).timestamp = now
         e.add_field(name="ID", value=member.id)
         e.add_field(name="Joined", value=member.joined_at)
         e.add_field(name="Created", value=human_timedelta(member.created_at), inline=False)
@@ -249,8 +278,7 @@ class RaidControl(Cog):
         mode information.
         """
 
-        query = "SELECT raid_mode, broadcast_channel FROM guild_raid_config WHERE id=$1;"
-
+        query = "SELECT raid_mode, broadcast_channel FROM guild_raid_config WHERE id = $1"
         row = await ctx.db.fetchrow(query, ctx.guild.id)
         if row is None:
             fmt = "Raid Mode: off\nBroadcast Channel: None"
@@ -361,7 +389,7 @@ class RaidControl(Cog):
         if count is None:
             query = """SELECT mention_count, COALESCE(safe_mention_channel_ids, '{}') AS channel_ids
                        FROM guild_raid_config
-                       WHERE id=$1;
+                       WHERE id = $1
                     """
 
             row = await ctx.db.fetchrow(query, ctx.guild.id)
@@ -417,8 +445,7 @@ class RaidControl(Cog):
     @commands.guild_only()
     @is_mod()
     async def mentionspam_unignore(self, ctx, *channels: discord.TextChannel):
-        """Specifies what channels to take off the ignore list.
-        """
+        """Specifies what channels to take off the ignore list."""
 
         if not channels:
             return await ctx.send("Missing channels to protect.")

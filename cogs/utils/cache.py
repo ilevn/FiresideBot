@@ -43,6 +43,10 @@ class ExpiringCache(dict):
     def __setitem__(self, key, value):
         super().__setitem__(key, (value, time.monotonic()))
 
+    def __contains__(self, key):
+        self.__verify_cache_integrity()
+        return super().__contains__(key)
+
     def fetch(self, key):
         self.__verify_cache_integrity()
         try:
