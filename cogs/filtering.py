@@ -1,5 +1,6 @@
 import abc
 import argparse
+import copy
 import datetime
 import shlex
 import textwrap
@@ -89,12 +90,13 @@ def wrap_exception(func):
 
 
 class BaseAction(metaclass=abc.ABCMeta):
-    __slots__ = ("entity", "message", "config")
+    __slots__ = ("entity", "message", "config", "match")
 
-    def __init__(self, message, entity, config):
+    def __init__(self, message, entity, config, match):
         self.message = message
         self.entity = entity
         self.config: EventConfig = config
+        self.match = match
 
     @abc.abstractmethod
     async def apply(self, **kwargs):
@@ -187,7 +189,8 @@ class RespondAction(BaseAction):
             "name_mention": self.message.author.mention,
             "channel": self.message.channel.mention,
             "count_raw": str(_count),
-            "count": 'once' if _count == 1 else format(Plural(_count), 'time')
+            "count": 'once' if _count == 1 else format(Plural(_count), 'time'),
+            **{f"g{i}": c for i, c in enumerate(self.match.groups(), start=1)}
         }
 
         def repl(m):
@@ -278,9 +281,9 @@ class GuildFilter:
     async def feed(self, message):
         async def process_regexps(*, entities):
             for entity in entities:
-                if re.search(entity.regex, content):
+                if match := re.search(entity.regex, content):
                     # Apply actions.
-                    await entity.apply_all(message, config=config)
+                    await entity.apply_all(message, config=config, match=match)
 
         config = await self.fetch_mod_config()
         # Strip accents and other junk.
@@ -328,14 +331,14 @@ class FilterEntity:
 
         return getattr(guild, f"get_{self.entity_type}")(self.entity_id)
 
-    async def apply_all(self, message, *, config):
+    async def apply_all(self, message, *, config, match):
         if not self.actions:
             self.bot.logger.warn(f"No actions defined for entity {self!r}")
             return
 
         self.counter += 1
         for klass in self.actions:
-            action = klass(message, self, config)
+            action = klass(message, self, config, match)
             try:
                 await action.apply(**self.kwargs)
             except ActionFailed as e:
@@ -502,6 +505,7 @@ class Filtering(Cog):
         - `$name` - A formatted string of the user who triggered it.
         - `$name_mention` - A mention of the user who triggered it.
         - `$channel` - A mention of the context channel.
+        - `$g{n}` - Reference to capture group n.
         """
 
         parser = Args(add_help=False, allow_abbrev=False)
@@ -874,6 +878,34 @@ class Filtering(Cog):
 
         entity.counter = value
         await ctx.send(f"Set counter for entity {id} to `{value}`.")
+
+    @filter.command(name="testwith")
+    @is_mod()
+    async def filter_testwith(self, ctx, id: entry_id, member: discord.Member, *, content):
+        """Allows you to trigger a filter with a specific user.
+        This is nice for situations where you'd like to test
+        the filter without having to use an alt.
+        """
+
+        entries = await self.get_active_filters(ctx.guild.id)
+        if not entries:
+            return await ctx.send("Could not find filters for this guild. Weird...")
+
+        entity = discord.utils.get(entries.all_entities, id=id)
+        if not entity:
+            return await ctx.send("Could not find an entity with that ID.")
+
+        if (match := re.search(entity.regex, content)) is None:
+            return await ctx.send(f"The provided content doesn't match with the regex for entity {id}.")
+
+        # Hacky but works.
+        message = copy.copy(ctx.message)
+        message.author = member
+        message.content = content
+
+        cog = self.bot.get_cog("Event")
+        config = cog and await cog.get_guild_config(ctx.guild.id)
+        await entity.apply_all(message, config=config, match=match)
 
 
 setup = Filtering.setup
