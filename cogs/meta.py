@@ -4,13 +4,12 @@ import unicodedata
 from typing import Union
 
 import discord
-from discord.ext import commands
-
 from cogs.utils import mod_cooldown
 from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import PaginatedHelpCommand
 from cogs.utils.paginators.urban_pages import UrbanDictionaryPages
+from discord.ext import commands
 
 
 class Meta(Cog):
@@ -106,7 +105,7 @@ class Meta(Cog):
             else:
                 await ctx.send(embed=discord.Embed(title='Random Dog').set_image(url=url))
 
-    @commands.command(hidden=True)
+    @commands.command()
     async def cat(self, ctx):
         """Gives you a random cat."""
         async with ctx.session.get("https://api.thecatapi.com/v1/images/search") as resp:
@@ -114,6 +113,15 @@ class Meta(Cog):
                 return await ctx.send('No cat found :(')
             js = await resp.json()
             await ctx.send(embed=discord.Embed(title="Random Cat").set_image(url=js[0]["url"]))
+
+    @commands.command()
+    async def fox(self, ctx):
+        """Gives you a random fox."""
+        async with ctx.session.get("https://randomfox.ca/floof/") as resp:
+            if resp.status != 200:
+                return await ctx.send('No fox found :(')
+            js = await resp.json()
+            await ctx.send(embed=discord.Embed(title="Random Fox").set_image(url=js["image"]))
 
     @commands.command(aliases=["avatar"])
     async def avy(self, ctx, *, user: Union[discord.Member, FetchedUser] = None):
