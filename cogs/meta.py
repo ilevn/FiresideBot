@@ -4,12 +4,13 @@ import unicodedata
 from typing import Union
 
 import discord
+from discord.ext import commands
+
 from cogs.utils import mod_cooldown
 from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import PaginatedHelpCommand
 from cogs.utils.paginators.urban_pages import UrbanDictionaryPages
-from discord.ext import commands
 
 
 class Meta(Cog):
