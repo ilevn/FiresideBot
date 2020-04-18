@@ -5,8 +5,9 @@ from discord.ext import commands
 
 from cogs.events import EventConfig
 from cogs.reminders import Timer
-from cogs.utils import FutureTime, human_timedelta, is_mod
+from cogs.utils import FutureTime, human_timedelta, is_mod, Plural
 from cogs.utils.meta_cog import Cog
+from cogs.utils.paginators import FieldPages, CannotPaginate
 from cogs.utils.punishment import Punishment, ActionType
 
 
@@ -88,8 +89,6 @@ class Punishments(Cog):
 
         return ctx.guild.get_channel(channel_id)
 
-    # NOTE: The mod check defaults to `manage_guild == True` atm.
-    # We probably want to change that in the future.
     @commands.command(aliases=["jail"])
     @is_mod()
     async def shitpost(self, ctx, duration: FutureTime, member: discord.Member, *, reason=None):
@@ -171,6 +170,58 @@ class Punishments(Cog):
             reminder._task = self.bot.loop.create_task(reminder.dispatch_timers())
 
         await ctx.send(f"Punishment for {member} was successfully cancelled.")
+
+    @commands.command(aliases=["expires"])
+    @is_mod()
+    async def expires_at(self, ctx, *, member: discord.Member):
+        """Checks when a punishment expires for a member."""
+
+        query = """
+                SELECT expires FROM reminders
+                WHERE event = 'punish'
+                AND extra #>> '{args, 2}' = $1
+                """
+
+        expires = await ctx.db.fetchval(query, str(member.id))
+        if not expires:
+            return await ctx.send("This member is currently not punished.")
+
+        await ctx.send(f"Punishment for {member} expires in {human_timedelta(expires)}.")
+
+    @commands.command(name="punishments")
+    @is_mod()
+    async def punishment_list(self, ctx):
+        """Shows the 10 latest currently running punishments."""
+
+        query = """
+                SELECT expires, extra #>> '{args,1}', extra #>> '{args,2}'
+                FROM reminders
+                WHERE event = 'punish'
+                AND extra #>> '{args,0}' = $1
+                ORDER BY expires
+                LIMIT 10
+                """
+
+        records = await ctx.db.fetch(query, str(ctx.guild.id))
+        if not records:
+            return await ctx.send(":x: No punishments are currently in place.")
+
+        def get_member(id_):
+            return ctx.guild.get_member(int(id_)) or f"Member left (ID: {id_})"
+
+        entries = []
+        for expires, mod_id, member_id in records:
+            body = f"Responsible moderator: {get_member(mod_id)} Expires in {human_timedelta(expires)}"
+            entries.append((get_member(member_id), body))
+
+        pages = FieldPages(ctx, entries=entries)
+        pages.embed.title = "Punishments"
+        pages.embed.set_footer(text=format(Plural(len(entries)), "punishment"))
+
+        try:
+            await pages.paginate()
+        except CannotPaginate as e:
+            await ctx.send(e)
 
 
 setup = Punishments.setup
