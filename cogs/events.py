@@ -303,7 +303,7 @@ class Event(Cog):
 
         if message.content:
             # Guard against large chunks of text.
-            embed_paginate(embed, "Content", message.clean_content)
+            embed_paginate(embed, "Content", message.clean_content, inline=False)
 
         embed.timestamp = datetime.utcnow()
 

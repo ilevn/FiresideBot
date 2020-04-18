@@ -5,7 +5,7 @@ import asyncpg
 import discord
 from discord.ext import commands
 
-from cogs.utils import db, time
+from cogs.utils import db, time, Plural
 from cogs.utils.meta_cog import Cog
 
 
@@ -207,7 +207,7 @@ class Reminder(Cog):
         if len(records) == 5:
             e.set_footer(text='Only showing the latest 5 timers.')
         else:
-            e.set_footer(text=f'{len(records)} reminder{"s" if len(records) > 1 else ""}')
+            e.set_footer(text=f'{Plural(len(records)):reminder}')
 
         for expires, message, _id in records:
             e.add_field(name=f'In {time.human_timedelta(expires)}', value=f"[{_id}] {message}", inline=False)
@@ -231,13 +231,13 @@ class Reminder(Cog):
     @reminder.command(name="cancel")
     async def reminder_cancel(self, ctx, *, id: int):
         """Cancels a reminder.
-        You can get the reminder ID by invoking >reminder list.
+        You can get the reminder ID by invoking `reminder list`.
         """
 
         query = """DELETE FROM reminders
-                   WHERE id=$1
+                   WHERE id = $1
                    AND event = 'reminder'
-                   AND extra #>> '{args,0}' = $2;
+                   AND extra #>> '{args,0}' = $2
                 """
         status = await ctx.db.execute(query, id, str(ctx.author.id))
         if status == 'DELETE 0':

@@ -211,7 +211,7 @@ class Punishments(Cog):
 
         entries = []
         for expires, mod_id, member_id in records:
-            body = f"Responsible moderator: {get_member(mod_id)} Expires in {human_timedelta(expires)}"
+            body = f"Responsible moderator: {get_member(mod_id)}\nExpires in {human_timedelta(expires)}"
             entries.append((get_member(member_id), body))
 
         pages = FieldPages(ctx, entries=entries)
