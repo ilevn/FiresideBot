@@ -12,7 +12,7 @@ from cogs.utils import human_timedelta, Plural, embed_paginate
 from cogs.utils.cache import cache, ExpiringCache
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import BulkDeletePaginator
-from cogs.utils.punishment import Punishment
+from cogs.utils.punishment import Punishment, ActionType
 
 
 def is_outside_voice(state):
@@ -455,7 +455,8 @@ class Event(Cog):
         if not config:
             return
 
-        embed = discord.Embed(title=f"\N{SHAMROCK} {punishment.type.title}", colour=discord.Colour.green())
+        fmt = f"{punishment.type.title} punishment lifted" if punishment.type != ActionType.UNBAN else "New Unban"
+        embed = discord.Embed(title=f"\N{SHAMROCK} {fmt}", colour=discord.Colour.green())
         target = getattr(punishment.target, "display_name", punishment.target)
         embed.add_field(name="Affected member", value=target, inline=False)
         embed.add_field(name="Responsible moderator", value=punishment.moderator, inline=False)
