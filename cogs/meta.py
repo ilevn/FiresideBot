@@ -83,7 +83,7 @@ class Meta(Cog):
             await ctx.send(f"\N{DOG FACE} **Random dog fact:**\n{js['facts'][0]}")
 
     @commands.command()
-    @mod_cooldown(1, 10 * 60, commands.BucketType.member)
+    @mod_cooldown(1, 45.0, commands.BucketType.member)
     async def dog(self, ctx):
         """Gives you a random dog."""
         async with ctx.session.get("https://random.dog/woof") as resp:
@@ -108,7 +108,7 @@ class Meta(Cog):
                 await ctx.send(embed=discord.Embed(title='Random Dog').set_image(url=url))
 
     @commands.command()
-    @mod_cooldown(1, 10 * 60, commands.BucketType.member)
+    @mod_cooldown(1, 45.0, commands.BucketType.member)
     async def cat(self, ctx):
         """Gives you a random cat."""
         async with ctx.session.get("https://api.thecatapi.com/v1/images/search") as resp:
@@ -118,7 +118,7 @@ class Meta(Cog):
             await ctx.send(embed=discord.Embed(title="Random Cat").set_image(url=js[0]["url"]))
 
     @commands.command()
-    @mod_cooldown(1, 10 * 60, commands.BucketType.member)
+    @mod_cooldown(1, 45.0, commands.BucketType.member)
     async def fox(self, ctx):
         """Gives you a random fox."""
         async with ctx.session.get("https://randomfox.ca/floof/") as resp:
