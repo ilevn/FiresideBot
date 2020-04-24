@@ -31,10 +31,15 @@ class WarningEntry(db.Table, table_name="warning_entries"):
 ActionInformation = namedtuple("ActionInformation", "member text is_warning")
 
 
+def get_everyone_perms_for(ctx):
+    return ctx.channel.overwrites_for(ctx.guild.default_role)
+
+
 def mod_chat_only():
     """Ensures a command only gets invoked within a mod chat."""
+
     async def pred(ctx):
-        overwrites = ctx.channel.overwrites_for(ctx.guild.default_role)
+        overwrites = get_everyone_perms_for(ctx)
         if overwrites.read_messages is False:
             return True
         raise PublicChannelError()
@@ -59,7 +64,8 @@ class Warnings(Cog):
 
     @staticmethod
     async def _interactive_invocation(ctx, member: discord.Member, is_warning=True):
-        to_delete = []
+        # Delete invocation messages to make it less spammy
+        to_delete = [ctx.message]
         try:
             page = await WarningPaginator.from_member(ctx, member, short_view=True)
             await page.paginate()
@@ -111,12 +117,14 @@ class Warnings(Cog):
             text = await self._interactive_invocation(ctx, member, information.is_warning)
             if not text:
                 return
+        else:
+            await ctx.message.delete()
 
         query = """INSERT INTO warning_entries (member_id, moderator_id, guild_id, information, warning)
                    VALUES ($1, $2, $3, $4, $5) RETURNING id"""
 
         status = await ctx.db.fetchval(query, member.id, ctx.author.id, ctx.guild.id, text, information.is_warning)
-        await ctx.send(f"OK. Added new {type_} for {member}")
+        await ctx.send(f"OK. Added new {type_} for {member}", delete_after=3)
 
         cog = ctx.bot.get_cog("Event")
         if not cog:
@@ -156,16 +164,15 @@ class Warnings(Cog):
     @staticmethod
     async def get_info(id_, ctx):
         # Used to double-check entries before editing/deleting them.
-        record = await ctx.db.fetchrow("SELECT information, moderator_id, member_id "
-                                       "FROM warning_entries WHERE id = $1", id_)
+        query = "SELECT information, moderator_id, member_id FROM warning_entries WHERE id = $1"
+        record = await ctx.db.fetchrow(query, id_)
         if not record:
             raise RuntimeError
 
         mod = ctx.guild.get_member(record[1])
         user = ctx.guild.get_member(record[2]) or f"Left server ({record[2]})"
 
-        information = f"Responsible mod: {mod}\nMember: {user}\nText: {record[0]}"
-        return information
+        return f"Responsible mod: {mod}\nMember: {user}\nText: {record[0]}"
 
     @warn.command(name="edit")
     async def warn_edit(self, ctx, id: entry_id, *, text: str):
@@ -210,8 +217,15 @@ class Warnings(Cog):
     @warn.command(name="list")
     async def warn_list(self, ctx, member: Union[discord.Member, FetchedUser] = None):
         """Shows all warnings and notes for a member or the server if no member is provided."""
+
+        # Don't show notes and moderator data in public channels.
+        is_public = not get_everyone_perms_for(ctx).read_messages is False
+        if member is not None:
+            page = await WarningPaginator.from_member(ctx, member, should_redact=is_public)
+        else:
+            page = await WarningPaginator.from_all(ctx, should_redact=is_public)
+
         try:
-            page = await WarningPaginator.from_member(ctx, member) if member else await WarningPaginator.from_all(ctx)
             await page.paginate()
         except CannotPaginate as e:
             await ctx.send(e)

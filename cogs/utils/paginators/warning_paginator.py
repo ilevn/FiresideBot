@@ -5,16 +5,17 @@ from cogs.utils.paginators import Pages, CannotPaginate
 
 
 class WarningPaginator(Pages):
-    def __init__(self, ctx, entries, *, per_page=4):
+    def __init__(self, ctx, entries, *, per_page=4, should_redact=False):
         super().__init__(ctx, entries=entries, per_page=per_page)
         self.total = len(entries)
+        self.should_redact = should_redact
 
     @staticmethod
     def _format_desc(warnings, notes):
         return f"{Plural(warnings):warning}, {Plural(notes):note}"
 
     @classmethod
-    async def from_all(cls, ctx):
+    async def from_all(cls, ctx, should_redact=False):
         # Get all entries.
         query = """SELECT id, information, created, warning, member_id, moderator_id
                    FROM warning_entries
@@ -53,13 +54,13 @@ class WarningPaginator(Pages):
             nested_pages.extend(
                 (str(member), desc, needed_info[i:i + per_page]) for i in range(0, len(needed_info), per_page))
 
-        self = cls(ctx, nested_pages, per_page=1)
+        self = cls(ctx, nested_pages, per_page=1, should_redact=should_redact)
         self.get_page = self.get_member_page
         self.total = sum(len(o) for _, _, o in nested_pages)
         return self
 
     @classmethod
-    async def from_member(cls, ctx, member, short_view=False):
+    async def from_member(cls, ctx, member, short_view=False, should_redact=False):
         query = f"""SELECT id, information, created, warning, moderator_id
                     FROM warning_entries
                     WHERE guild_id = $1
@@ -84,6 +85,7 @@ class WarningPaginator(Pages):
 
         notes, warnings = await ctx.db.fetchrow(query, guild.id, member.id)
         self = cls(ctx, [r[0:4] + (getattr(guild.get_member(r[4]), 'name', 'Mod left'),) for r in info])
+        self.should_redact = should_redact
         self.description = self._format_desc(warnings, notes)
         self.title = f'Overview for {member}'
         self.total = warnings + notes
@@ -96,19 +98,29 @@ class WarningPaginator(Pages):
         self.description = description
         return info
 
+    def format_entry(self, entry):
+        if self.should_redact:
+            if entry[3] is True:
+                return "Warning", entry[1]
+        else:
+            # Get type.
+            type_ = "Warning" if entry[3] else "Note"
+            # Format the actual entry.
+            fmt = f"[{entry[0]}] {entry[2]:%d/%m/%Y} - {entry[1]} [*{entry[4]}*]"
+            return type_, fmt
+
     def prepare_embed(self, entries, page, *, first=False):
         self.embed.clear_fields()
         self.embed.description = self.description
         self.embed.title = self.title
-
         self.embed.set_footer(text=f'Warning log')
 
         for entry in entries:
-            # Get type.
-            type_ = "Warning" if entry[3] else "Note"
+            actual_entry = self.format_entry(entry)
+            if not actual_entry:
+                continue
 
-            # Format the actual entry.
-            fmt = f"[{entry[0]}] {entry[2]:%d/%m/%Y} - {entry[1]} [*{entry[4]}*]"
+            type_, fmt = actual_entry
             self.embed.add_field(name=type_, value=fmt, inline=False)
 
         if self.maximum_pages:
