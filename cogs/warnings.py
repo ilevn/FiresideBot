@@ -31,8 +31,8 @@ class WarningEntry(db.Table, table_name="warning_entries"):
 ActionInformation = namedtuple("ActionInformation", "member text is_warning")
 
 
-def get_everyone_perms_for(ctx):
-    return ctx.channel.overwrites_for(ctx.guild.default_role)
+def get_everyone_perms_for(channel):
+    return channel.overwrites_for(channel.guild.default_role)
 
 
 def mod_chat_only():
@@ -219,7 +219,7 @@ class Warnings(Cog):
         """Shows all warnings and notes for a member or the server if no member is provided."""
 
         # Don't show notes and moderator data in public channels.
-        is_public = not get_everyone_perms_for(ctx).read_messages is False
+        is_public = not get_everyone_perms_for(ctx.channel).read_messages is False
         if member is not None:
             page = await WarningPaginator.from_member(ctx, member, should_redact=is_public)
         else:
