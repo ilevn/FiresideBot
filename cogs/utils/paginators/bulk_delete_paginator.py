@@ -13,7 +13,7 @@ import discord
 # 9000 / ceil()(2) -> 4500
 # 4500 / 1024 -> 5 fields rounded
 
-EMBED_MAX = 5800
+EMBED_MAX = 5200
 FIELD_MAX = 25
 
 Field = namedtuple("Field", "name value inline count")
