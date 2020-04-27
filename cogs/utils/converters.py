@@ -56,3 +56,21 @@ def entry_id(arg):
         raise commands.BadArgument("This looks like a user ID...")
 
     return arg
+
+
+class GlobalChannel(commands.Converter):
+    """Converter for global channel lookups from any server."""
+    async def convert(self, ctx, argument):
+        try:
+            return await commands.TextChannelConverter().convert(ctx, argument)
+        except commands.BadArgument:
+            # Not found. Fall back to ID + global lookup.
+            try:
+                channel_id = int(argument, base=10)
+            except ValueError:
+                raise commands.BadArgument(f'Could not find a channel by ID {argument!r}.')
+            else:
+                channel = ctx.bot.get_channel(channel_id)
+                if channel is None:
+                    raise commands.BadArgument(f'Could not find a channel by ID {argument!r}.')
+                return channel
