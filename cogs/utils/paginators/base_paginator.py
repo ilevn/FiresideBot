@@ -1,6 +1,7 @@
 import asyncio
 
 import discord
+from discord.ext.commands import Paginator as DPaginator
 
 
 class CannotPaginate(Exception):
@@ -82,6 +83,13 @@ class Pages:
         base = (page - 1) * self.per_page
         return self.entries[base:base + self.per_page]
 
+    def get_content(self, entries, page, *, first=False):
+        return None
+
+    def get_embed(self, entries, page, *, first=False):
+        self.prepare_embed(entries, page, first=first)
+        return self.embed
+
     def _generate_delim(self, entries, start):
         if self.use_index:
             for count, elem in enumerate(entries, start):
@@ -112,18 +120,19 @@ class Pages:
     async def show_page(self, page, *, first=False):
         self.current_page = page
         entries = self.get_page(page)
-        self.prepare_embed(entries, page, first=first)
+        content = self.get_content(entries, page, first=first)
+        embed = self.get_embed(entries, page, first=first)
 
         if not self.paginating:
             # Set last message. This allows us to delete it more easily.
-            self.message = await self.channel.send(embed=self.embed)
+            self.message = await self.channel.send(content=content, embed=embed)
             return self.message
 
         if not first:
-            await self.message.edit(embed=self.embed)
+            await self.message.edit(content=content, embed=embed)
             return
 
-        self.message = await self.channel.send(embed=self.embed)
+        self.message = await self.channel.send(content=content, embed=embed)
         for (reaction, _) in self.reaction_emojis:
             if self.maximum_pages == 2 and reaction in ('\u23ed', '\u23ee'):
                 # no |<< or >>| buttons if we only have two pages
@@ -210,15 +219,16 @@ class Pages:
         await self.message.delete()
         self.paginating = False
 
-    def react_check(self, reaction, user):
-        if user is None or user.id != self.author.id:
+    def react_check(self, payload):
+        if payload.user_id != self.author.id:
             return False
 
-        if reaction.message.id != self.message.id:
+        if payload.message_id != self.message.id:
             return False
 
+        to_check = str(payload.emoji)
         for (emoji, func) in self.reaction_emojis:
-            if reaction.emoji == emoji:
+            if to_check == emoji:
                 self.match = func
                 return True
         return False
@@ -229,12 +239,12 @@ class Pages:
         if not self.paginating:
             await first_page
         else:
-            # allow us to react to reactions right away if we're paginating
+            # Allow us to react to reactions right away if we're paginating.
             self.bot.loop.create_task(first_page)
 
         while self.paginating:
             try:
-                reaction, user = await self.bot.wait_for('reaction_add', check=self.react_check, timeout=120.0)
+                payload = await self.bot.wait_for('raw_reaction_add', check=self.react_check, timeout=120.0)
             except asyncio.TimeoutError:
                 self.paginating = False
                 try:
@@ -245,9 +255,10 @@ class Pages:
                     break
 
             try:
-                await self.message.remove_reaction(reaction, user)
+                await self.message.remove_reaction(payload.emoji, discord.Object(id=payload.user_id))
             except:
-                pass  # can't remove it so don't bother doing so
+                # Can't remove it so don't bother doing so.
+                pass
 
             await self.match()
 
@@ -271,3 +282,25 @@ class FieldPages(Pages):
                 text = f'Page {page}/{self.maximum_pages}'
 
             self.embed.set_footer(text=text)
+
+
+class TextPages(Pages):
+    """Uses a commands.Paginator internally to paginate some text."""
+
+    def __init__(self, ctx, text, *, prefix='```', suffix='```', max_size=2000):
+        paginator = DPaginator(prefix=prefix, suffix=suffix, max_size=max_size - 200)
+        for line in text.split('\n'):
+            paginator.add_line(line)
+
+        super().__init__(ctx, entries=paginator.pages, per_page=1, show_entry_count=False)
+
+    def get_page(self, page):
+        return self.entries[page - 1]
+
+    def get_embed(self, entries, page, *, first=False):
+        return None
+
+    def get_content(self, entry, page, *, first=False):
+        if self.maximum_pages > 1:
+            return f'{entry}\nPage {page}/{self.maximum_pages}'
+        return entry
