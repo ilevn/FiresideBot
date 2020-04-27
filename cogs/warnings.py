@@ -39,7 +39,7 @@ def mod_chat_only():
     """Ensures a command only gets invoked within a mod chat."""
 
     async def pred(ctx):
-        overwrites = get_everyone_perms_for(ctx)
+        overwrites = get_everyone_perms_for(ctx.channel)
         if overwrites.read_messages is False:
             return True
         raise PublicChannelError()
