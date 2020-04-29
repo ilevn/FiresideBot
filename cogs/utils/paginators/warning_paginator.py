@@ -101,7 +101,7 @@ class WarningPaginator(Pages):
     def format_entry(self, entry):
         if self.should_redact:
             if entry[3] is True:
-                return "Warning", entry[1]
+                return "Warning", f"{entry[2]:%d/%m/%Y} - {entry[1]}"
         else:
             # Get type.
             type_ = "Warning" if entry[3] else "Note"
