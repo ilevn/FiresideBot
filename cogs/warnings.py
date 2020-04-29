@@ -220,12 +220,12 @@ class Warnings(Cog):
 
         # Don't show notes and moderator data in public channels.
         is_public = not get_everyone_perms_for(ctx.channel).read_messages is False
-        if member is not None:
-            page = await WarningPaginator.from_member(ctx, member, should_redact=is_public)
-        else:
-            page = await WarningPaginator.from_all(ctx, should_redact=is_public)
-
         try:
+            if member is not None:
+                page = await WarningPaginator.from_member(ctx, member, should_redact=is_public)
+            else:
+                page = await WarningPaginator.from_all(ctx, should_redact=is_public)
+
             await page.paginate()
         except CannotPaginate as e:
             await ctx.send(e)
