@@ -126,6 +126,20 @@ class Warnings(Cog):
         status = await ctx.db.fetchval(query, member.id, ctx.author.id, ctx.guild.id, text, information.is_warning)
         await ctx.send(f"OK. Added new {type_} for {member}", delete_after=3)
 
+        # Check how many warnings they got within the last 30 days.
+        # I could do this with a CTE but it's not worth it.
+        query = """
+                SELECT COUNT(*) FROM warning_entries
+                WHERE member_id = $1
+                AND warning = TRUE
+                AND created > (CURRENT_TIMESTAMP - INTERVAL '30 days')
+                """
+
+        num_warnings = await ctx.db.fetchval(query, member.id)
+        info = None
+        if num_warnings >= 4:
+            info = f"@everyone: {member.mention} received {num_warnings} warnings in the last 30 days."
+
         cog = ctx.bot.get_cog("Event")
         if not cog:
             return
@@ -134,12 +148,13 @@ class Warnings(Cog):
         if not (config and config.mod_channel):
             return
 
-        embed = discord.Embed(title=f"\U00002139 {ctx.author} created a new {type_}")
+        colour = discord.Colour.red() if num_warnings >= 4 else discord.Embed.Empty
+        embed = discord.Embed(title=f"\U00002139 {ctx.author} created a new {type_}", colour=colour)
         embed.add_field(name="Member", value=f"{member} (`{member.id}`)", inline=False)
         embed.add_field(name="Content", value=text, inline=False)
         embed.set_footer(text=f'Entry ID {status}')
 
-        await config.mod_channel.send(embed=embed)
+        await config.mod_channel.send(content=info, embed=embed)
 
     @warn.command(name="issue")
     @mod_chat_only()
