@@ -230,5 +230,14 @@ class Warnings(Cog):
         except CannotPaginate as e:
             await ctx.send(e)
 
+    @commands.command(name="mywarnings")
+    async def warn_mine(self, ctx):
+        """Lists your warnings on this server."""
+        try:
+            page = await WarningPaginator.from_member(ctx, ctx.author, should_redact=True)
+            await page.paginate()
+        except CannotPaginate as e:
+            await ctx.send(e)
+
 
 setup = Warnings.setup

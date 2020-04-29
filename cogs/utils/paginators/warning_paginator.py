@@ -48,7 +48,10 @@ class WarningPaginator(Pages):
 
             info = sorted(info, key=key)
             notes = sum(1 for _ in filter(key, info))
-            desc = cls._format_desc(len(info) - notes, notes)
+            if should_redact:
+                desc = format(Plural(len(info) - notes), 'warning')
+            else:
+                desc = cls._format_desc(len(info) - notes, notes)
 
             needed_info = [r[0:4] + (getattr(ctx.guild.get_member(r[5]), 'name', 'Mod left'),) for r in info]
             nested_pages.extend(
@@ -56,6 +59,7 @@ class WarningPaginator(Pages):
 
         self = cls(ctx, nested_pages, per_page=1, should_redact=should_redact)
         self.get_page = self.get_member_page
+        # This number is off in public channels, but w/e.
         self.total = sum(len(o) for _, _, o in nested_pages)
         return self
 
@@ -85,10 +89,15 @@ class WarningPaginator(Pages):
 
         notes, warnings = await ctx.db.fetchrow(query, guild.id, member.id)
         self = cls(ctx, [r[0:4] + (getattr(guild.get_member(r[4]), 'name', 'Mod left'),) for r in info])
-        self.should_redact = should_redact
-        self.description = self._format_desc(warnings, notes)
         self.title = f'Overview for {member}'
-        self.total = warnings + notes
+        self.should_redact = should_redact
+
+        if should_redact:
+            self.total = warnings
+            self.description = format(Plural(len(info) - notes), 'warning')
+        else:
+            self.total = warnings + notes
+            self.description = cls._format_desc(len(info) - notes, notes)
 
         return self
 
