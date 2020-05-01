@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 from collections import defaultdict
-from enum import IntEnum
+from enum import Enum
 from typing import Optional
 
 import discord
@@ -12,7 +12,7 @@ from cogs.utils.cache import cache, ExpiringCache
 from cogs.utils.meta_cog import Cog
 
 
-class RaidMode(IntEnum):
+class RaidMode(Enum):
     off = 0
     on = 1
     strict = 2
