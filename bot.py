@@ -13,7 +13,7 @@ import logbook
 from discord.ext import commands
 from logbook import StreamHandler
 from logbook.compat import redirect_logging
-from sentry_sdk import init as sen_init, configure_scope as sen_configure_scope, capture_exception
+from sentry_sdk import init as sen_init, push_scope as sen_configure_scope, capture_exception
 
 import config
 from cogs.utils.context import Context
@@ -139,8 +139,6 @@ class FiresideBot(commands.Bot):
 
         with sen_configure_scope() as scope:
             scope.set_context("Event information", data)
-            # For some reason, this doesn't get cleared.
-            scope.remove_context("Invoker information")
             # sys.exc_info() is used under the hood.
             capture_exception()
 
