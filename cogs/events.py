@@ -261,6 +261,9 @@ class Event(Cog):
 
     @Cog.listener()
     async def on_message_edit(self, before: Message, after: Message):
+        if after.guild is None:
+            return
+
         config = await self.get_guild_config(after.guild.id)
         if not config:
             return
@@ -286,6 +289,9 @@ class Event(Cog):
 
     @Cog.listener()
     async def on_message_delete(self, message: discord.Message):
+        if message.guild is None:
+            return
+
         config = await self.get_guild_config(message.guild.id)
         if not config:
             return
