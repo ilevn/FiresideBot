@@ -5,7 +5,7 @@ import weakref
 from collections import Counter, namedtuple
 from datetime import datetime
 from enum import IntEnum
-from typing import Union
+from typing import Union, Dict
 
 import discord
 from discord.ext import commands
@@ -148,6 +148,7 @@ class Removals(Cog):
         super().__init__(bot)
         # A set of known removals. Used to short-circuit events.
         self.known_removals = set()
+        self.removal_information: Dict[int, _RemovalEntry] = {}
         self._locks = weakref.WeakValueDictionary()
 
     async def cog_check(self, ctx):
@@ -200,8 +201,12 @@ class Removals(Cog):
             return
 
         # First, try to get audit log info.
-        info = await self.get_potential_removal_entry(guild, member, type_)
-        if not info:
+        try:
+            info = self.removal_information.pop(member.id)
+        except KeyError:
+            info = await self.get_potential_removal_entry(guild, member, type_)
+
+        if info is None:
             return
 
         query = """
@@ -221,15 +226,15 @@ class Removals(Cog):
             self.bot.logger.warn("Removal event failed to send...")
             return
 
-        entry = _RemovalEntry(*record[1:])
-        responsible_mod = guild.get_member(entry.moderator)
-        reason = entry.reason
+        responsible_mod = info.moderator
+        reason = info.reason
         e_id = record[0]
         embed = self.format_modlog_entry(member, responsible_mod, formatter, type_.colour, e_id, reason)
         # Finally, log the new message to allow mods to edit it later.
         msg = await config.modlog.send(embed=embed)
         query = """UPDATE removals SET message_id = $1 WHERE id = $2"""
         await self.bot.pool.execute(query, msg.id, record[0])
+
         # Remind mods to provide a reason if none is set.
         if not reason and config.mod_channel:
             prefix = self.bot.command_prefix
@@ -240,7 +245,7 @@ class Removals(Cog):
                       f"Please do so by typing `{prefix}reason {e_id}`, thank you."
             else:
                 action = "unbanned" if type_ is RemovalType.UNBAN else "got rid of"
-                fmt = f"@here I'm not sure who {action} {member} but his entry is missing a reason...\n" \
+                fmt = f"@here I'm not sure who {action} {member} but their entry is missing a reason...\n" \
                       f"Please specify one by typing `{prefix}reason {e_id}`, thank you."
 
             await config.mod_channel.send(fmt)
@@ -252,6 +257,8 @@ class Removals(Cog):
 
         if type_ == RemovalType.BAN:
             # Set marker to avoid event clashing with KICK.
+            # The only reason this works is because discord dispatches
+            # MEMBER_BAN first.
             self.known_removals.add(member.id)
 
     async def parse_event_with_lock(self, guild, member, type_, formatter):
@@ -405,7 +412,7 @@ class Removals(Cog):
 
     @commands.command()
     @is_mod()
-    async def ban(self, ctx, member: discord.Member, *, reason: ActionReason = None):
+    async def ban(self, ctx, member: discord.Member, *, reason: ActionReason):
         """Bans a member from the server."""
 
         # People with manage_guild won't get banned for now.
@@ -413,12 +420,13 @@ class Removals(Cog):
             await ctx.send(":x: I cannot ban this member.")
             return
 
+        self.removal_information[member.id] = _RemovalEntry(member, ctx.author, reason)
         await member.ban(delete_message_days=7, reason=reason)
         await ctx.send('\N{OK HAND SIGN}')
 
     @commands.command()
     @is_mod()
-    async def kick(self, ctx, member: discord.Member, *, reason: ActionReason = None):
+    async def kick(self, ctx, member: discord.Member, *, reason: ActionReason):
         """Kicks a member from the server."""
 
         # People with manage_guild won't get kicked for now.
@@ -426,13 +434,15 @@ class Removals(Cog):
             await ctx.send(":x: I cannot kick this member.")
             return
 
+        self.removal_information[member.id] = _RemovalEntry(member, ctx.author, reason)
         await member.kick(reason=reason)
         await ctx.send('\N{OK HAND SIGN}')
 
     @commands.command()
     @is_mod()
-    async def unban(self, ctx, member: discord.Member, *, reason: ActionReason = None):
+    async def unban(self, ctx, member: discord.Member, *, reason: ActionReason):
         """Unbans a member from the server."""
+        self.removal_information[member.id] = _RemovalEntry(member, ctx.author, reason)
         await member.unban(reason=reason)
         await ctx.send('\N{OK HAND SIGN}')
 
@@ -440,8 +450,8 @@ class Removals(Cog):
     @is_mod()
     async def removals(self, ctx):
         """Fetches all guild removals from the central database"""
-        page = await RemovalPages.from_all(ctx)
         try:
+            page = await RemovalPages.from_all(ctx)
             await page.paginate()
         except CannotPaginate as e:
             await ctx.send(e)
