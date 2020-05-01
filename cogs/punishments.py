@@ -52,7 +52,6 @@ class Punishments(Cog):
             return
 
         role_id = config.shitpost_role_id if type_ == "shitpost" else config.jailed_role_id
-
         # Check if they're already punished.
         # The bot doesn't differentiate between a shitpost and a jailed punishment
         # because that would lead to undefined behaviour (e.g role state clash, double punishment).
@@ -60,7 +59,8 @@ class Punishments(Cog):
         record = await ctx.db.fetchrow(query, str(member.id))
 
         if record:
-            await ctx.send(f"{member} is already punished.")
+            await ctx.send(f"{member} is already punished."
+                           f" Check outstanding punishments for them with `{ctx.prefix}punishments")
             return
 
         # Save their role-state.
@@ -69,10 +69,11 @@ class Punishments(Cog):
 
         await reminder.create_timer(duration.dt, 'punish', ctx.guild.id, ctx.author.id,
                                     member.id, roles, type_, connection=ctx.db)
-        duration_delta = human_timedelta(duration.dt)
 
+        duration_delta = human_timedelta(duration.dt)
         # This is a work-around for discord's awful "nitrobooster" feature.
         still_apply = managed_roles.union({role_id})
+
         try:
             await member.edit(roles=[discord.Object(id=id_) for id_ in still_apply])
         except discord.Forbidden:
