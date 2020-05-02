@@ -36,7 +36,7 @@ def run_bot():
         print(f"Could not load PostgreSQL ({e}). Exiting.")
         return
 
-    bot = FiresideBot(command_prefix=".")
+    bot = FiresideBot(command_prefix=".", owner_id=189462608334553089)
     # Assign our bot pool properly
     bot.pool = pool
     bot.run()

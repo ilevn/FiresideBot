@@ -41,7 +41,7 @@ def is_admin():
 
 
 async def maintainer_check(ctx):
-    # Penloy & 0x1.
+    # 0x1.
     return ctx.author.id in ctx.bot.maintainers
 
 
