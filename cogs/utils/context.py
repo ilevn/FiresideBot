@@ -153,3 +153,8 @@ class Context(commands.Context):
         if label is not None:
             return f'{emoji}: {label}'
         return emoji
+
+    async def get_guild_config(self, guild_id=None):
+        guild_id = guild_id or self.guild.id
+        event_cog = self.bot.get_cog("Event")
+        return event_cog and await event_cog.get_guild_config(guild_id)

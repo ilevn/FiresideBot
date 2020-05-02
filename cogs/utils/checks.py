@@ -1,5 +1,7 @@
 from discord.ext import commands
 
+FIRESIDE_TRUSTED = 705893224023195748
+
 
 async def check_guild_permissions(ctx, perms, *, check=all):
     is_owner = await ctx.bot.is_owner(ctx.author)
@@ -16,6 +18,17 @@ async def check_guild_permissions(ctx, perms, *, check=all):
 def is_mod():
     async def pred(ctx):
         return await check_guild_permissions(ctx, {"manage_guild": True})
+
+    return commands.check(pred)
+
+
+def is_mod_or_trusted():
+    async def pred(ctx):
+        is_mod = await check_guild_permissions(ctx, {"manage_guild": True})
+        if is_mod:
+            return True
+
+        return ctx.author._roles.has(FIRESIDE_TRUSTED)
 
     return commands.check(pred)
 

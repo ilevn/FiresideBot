@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import clean_content
 
-from cogs.utils import db, is_mod
+from cogs.utils import db, is_mod_or_trusted
 from cogs.utils.converters import FetchedUser
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import FieldPages, CannotPaginate
@@ -28,12 +28,23 @@ class Quotes(Cog):
         pass
 
     @_quote.command(name="add")
-    @is_mod()
+    @is_mod_or_trusted()
     async def _quote_add(self, ctx, member: Union[discord.Member, FetchedUser], *, quote: clean_content):
         """Adds a quote for a specific user in this guild."""
         query = """INSERT INTO quotes (guild_id, user_id, quote) VALUES ($1, $2, $3)"""
         await ctx.db.execute(query, ctx.guild.id, member.id, quote)
         await ctx.send('\N{WHITE HEAVY CHECK MARK} Success :) Quote entry added')
+
+        if ctx.author.guild_permissions.manage_guild:
+            # Mod.
+            return
+
+        config = await ctx.get_guild_config()
+        if config and config.mod_channel:
+            embed = discord.Embed(title=f"\U00002139 New quote added for {member}")
+            embed.set_author(name=ctx.author, icon_url=ctx.author.avatar_url)
+            embed.description = quote
+            await config.mod_channel.send(embed=embed)
 
     @_quote.command(name="random")
     async def _quote_random(self, ctx, *, member: Union[discord.Member, FetchedUser]):
