@@ -99,6 +99,9 @@ class WarningPaginator(Pages):
             self.total = warnings + notes
             self.description = cls._format_desc(len(info) - notes, notes)
 
+        if should_redact and warnings == 0:
+            raise CannotPaginate(f"No warnings or notes found for {member}.")
+
         return self
 
     def get_member_page(self, page):
