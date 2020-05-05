@@ -118,7 +118,7 @@ class WarningPaginator(Pages):
             # Get type.
             type_ = "Warning" if entry[3] else "Note"
             # Format the actual entry.
-            fmt = f"[{entry[0]}] {entry[2]:%d/%b/%Y} - {entry[1]} [*{entry[4]}*]"
+            fmt = f"[{entry[0]}] {entry[2]:%d %b %Y} - {entry[1]} [*{entry[4]}*]"
             return type_, fmt
 
     def prepare_embed(self, entries, page, *, first=False):
