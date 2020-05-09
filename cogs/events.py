@@ -463,8 +463,7 @@ class Event(Cog):
 
         fmt = f"{punishment.type.title} punishment lifted" if punishment.type != ActionType.UNBAN else "New Unban"
         embed = discord.Embed(title=f"\N{SHAMROCK} {fmt}", colour=discord.Colour.green())
-        target = getattr(punishment.target, "display_name", punishment.target)
-        embed.add_field(name="Affected member", value=target, inline=False)
+        embed.add_field(name="Affected member", value=punishment.target, inline=False)
         embed.add_field(name="Responsible moderator", value=punishment.moderator, inline=False)
         embed.timestamp = datetime.utcnow()
 
