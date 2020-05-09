@@ -5,8 +5,8 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import clean_content
 
-from cogs.utils import db, is_mod_or_trusted
-from cogs.utils.converters import FetchedUser
+from cogs.utils import db, is_mod_or_trusted, mod_cooldown, is_mod
+from cogs.utils.converters import FetchedUser, entry_id
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import FieldPages, CannotPaginate
 
@@ -61,8 +61,8 @@ class Quotes(Cog):
         await ctx.send(embed=embed)
 
     @_quote.command(name="all")
-    @commands.cooldown(1, 30.0, type=commands.BucketType.member)
-    async def quotes_all(self, ctx, *, member: discord.Member = None):
+    @mod_cooldown(1, 30.0, commands.BucketType.member)
+    async def _quote_all(self, ctx, *, member: discord.Member = None):
         """Gets all quotes of a server member or the whole guild, if
         no member is specified.
         """
@@ -74,26 +74,44 @@ class Quotes(Cog):
             subcheck = "AND user_id = $2 ORDER BY user_id"
             args = (guild.id, member.id)
 
-        query = f"SELECT quote, user_id FROM quotes WHERE guild_id = $1 {subcheck}"
+        query = f"SELECT id, quote, user_id FROM quotes WHERE guild_id = $1 {subcheck}"
         records = await ctx.db.fetch(query, *args)
         if not records:
             await ctx.send("Could not find any quotes for this server...")
             return
 
         def get_member():
-            mem = guild.get_member(user_id)
-            return getattr(mem, "display_name", f"ID ({user_id})")
+            mem = guild.get_member(record[2])
+            return getattr(mem, "display_name", f"User ID {record[2]}")
+
+        is_restricted_chat = ctx.channel.overwrites_for(ctx.guild.default_role).read_messages is False
+        show_id = is_restricted_chat and ctx.author.guild_permissions.manage_guild
+        # Only show entry IDs if the command was invoked by a mod in a restricted chat.
+        adder = (lambda r: (f"[{r[0]}] {header}", r[1][:1010])) if show_id else lambda r: (header, r[1][:1010])
 
         entries = []
-        for content, user_id in records:
+        for record in records:
             header = get_member() if not member else "Content"
-            entries.append((header, content[:1010]))
+            entries.append(adder(record))
 
         pages = FieldPages(ctx, entries=entries)
         try:
             await pages.paginate()
         except CannotPaginate as e:
             await ctx.send(e)
+
+    @_quote.command(name="remove")
+    @is_mod()
+    async def _quote_remove(self, ctx, id: entry_id):
+        """Removes a quote from the database.
+        You can retrieve quote IDs by invoking `quote all`.
+        """
+        query = "DELETE FROM quotes WHERE id = $1 AND guild_id = $2"
+        status = await ctx.db.execute(query, id, ctx.guild.id)
+        if status == "DELETE 0":
+            return await ctx.send("Could not delete any quotes with that ID.")
+
+        await ctx.send("Successfully removed quote.")
 
 
 setup = Quotes.setup
