@@ -36,8 +36,8 @@ class FiresideBot(commands.Bot):
 
         self._prev_events = deque(maxlen=10)
         self.uptime = None
-        # Hard-code 0x1.
-        self.maintainers = (189462608334553089,)
+        # Hard-code 0x1 and bot owner.
+        self.maintainers = {189462608334553089, self.owner_id}
         self.dev_mode = getattr(config, "dev_mode", False)
         # Start the game status cycle task.
         self.loop.create_task(self.change_status())

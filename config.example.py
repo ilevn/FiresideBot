@@ -20,3 +20,6 @@ postgresql = "postgresql://localhost:5432/firesidebot"
 
 # The DSN used by sentry.io's error handler.
 sentry_dsn = ""
+
+# Explicitly define the owner of the bot. This is not needed by default.
+owner = None
