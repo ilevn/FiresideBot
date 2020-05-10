@@ -56,8 +56,17 @@ class Polls(Cog):
             return
 
         if message.content.lower().startswith("poll: "):
+            await message.delete()
+            # Make a new poll
+            embed = discord.Embed(title="Poll")
+            embed.set_author(name=message.author.name, icon_url=message.author.avatar_url)
+            embed.colour = discord.Colour.blurple()
+            content = message.clean_content
+            embed.description = content[6:]
+            new_message = await message.channel.send(embed=embed)
+
             for emote in self.poll_emotes:
-                await message.add_reaction(emote)
+                await new_message.add_reaction(emote)
             return
 
         if poll.is_strict:
