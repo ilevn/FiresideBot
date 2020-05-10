@@ -58,13 +58,16 @@ class Polls(Cog):
         if message.content.lower().startswith("poll: "):
             await message.delete()
             # Make a new poll
-            embed = discord.Embed(title="Poll")
+            embed = discord.Embed(colour=discord.Colour.blurple())
             embed.set_author(name=message.author.name, icon_url=message.author.avatar_url)
-            embed.colour = discord.Colour.blurple()
-            content = message.clean_content
-            embed.description = content[6:]
-            new_message = await message.channel.send(embed=embed)
+            content = message.clean_content[6:]
+            # Check if a mod mentioned someone.
+            mentions = None
+            if message.author.guild_permissions.manage_guild and message.role_mentions:
+                mentions = ", ".join(map(lambda r: r.mention, message.role_mentions))
 
+            embed.description = f"__**Poll:**__ {content}"
+            new_message = await message.channel.send(content=mentions, embed=embed)
             for emote in self.poll_emotes:
                 await new_message.add_reaction(emote)
             return
