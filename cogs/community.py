@@ -7,6 +7,8 @@ from cogs.utils.converters import CaselessRole
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, RolePoolPages
 
+FIRESIDE_SHITPOST_ACCESS = 710172301399687249
+
 
 class Roles(db.Table):
     id = db.PrimaryKeyColumn()
@@ -92,6 +94,30 @@ class Community(Cog):
             await pages.paginate()
         except CannotPaginate as e:
             return await ctx.send(e)
+
+    @staticmethod
+    async def toggle_role(ctx, role_id):
+        if any(r.id == role_id for r in ctx.author.roles):
+            try:
+                await ctx.author.remove_roles(discord.Object(id=role_id))
+            except:
+                await ctx.message.add_reaction('\N{NO ENTRY SIGN}')
+            else:
+                await ctx.message.add_reaction('\N{HEAVY MINUS SIGN}')
+            finally:
+                return
+
+        try:
+            await ctx.author.add_roles(discord.Object(id=role_id))
+        except:
+            await ctx.message.add_reaction('\N{NO ENTRY SIGN}')
+        else:
+            await ctx.message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
+
+    @commands.command()
+    async def shitposter(self, ctx):
+        """Allows you to opt-in or out of the shitpost channel."""
+        await self.toggle_role(ctx, FIRESIDE_SHITPOST_ACCESS)
 
 
 setup = Community.setup
