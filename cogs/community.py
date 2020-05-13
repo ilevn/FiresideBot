@@ -115,6 +115,7 @@ class Community(Cog):
         )
         if not prompt:
             await ctx.send("Aborting...", delete_after=3)
+            return
 
         try:
             await ctx.author.add_roles(discord.Object(id=FIRESIDE_SHITPOST_ACCESS))
