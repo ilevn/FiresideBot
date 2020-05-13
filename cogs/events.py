@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import typing
@@ -286,6 +287,54 @@ class Event(Cog):
             embed_paginate(embed, 'After', changes, inline=False)
 
             await config.modlog.send(embed=embed)
+
+    async def handle_invite(self, message: discord.Message):
+        config = await self.get_guild_config(message.guild.id)
+        if not (config and config.modlog):
+            return
+
+        pattern = re.compile(r'(?:https?://)?discord(?:\.gg|(?:app)?\.com/invite)/(?P<invite>\w+)')
+        match = re.search(pattern, message.content)
+        if match:
+            try:
+                invite = await self.bot.fetch_invite(match.group("invite"))
+            except discord.NotFound:
+                return
+
+            if invite in await message.guild.invites() or message.author.guild_permissions.manage_guild:
+                # One of our own invites or a mod, we don't care about that.
+                return
+
+            e = discord.Embed(title=f':warning: Invite posted for {invite.guild.name}',
+                              description=f'Message channel: {message.channel.mention}')
+            e.url = invite.url
+            e.colour = discord.Colour.blue()
+            e.set_author(name=message.author.name, icon_url=message.author.avatar_url)
+            e.add_field(name='Foreign guild channel', value=f'#{invite.channel.name}')
+            e.set_footer(text=message.author.id).timestamp = datetime.utcnow()
+
+            msg = await config.modlog.send("@here", embed=e)
+
+            def check(reaction, user):
+                if str(reaction.emoji) == '\N{PUT LITTER IN ITS PLACE SYMBOL}' and not user.bot:
+                    return True
+                return False
+
+            await msg.add_reaction('\N{PUT LITTER IN ITS PLACE SYMBOL}')
+
+            try:
+                await self.bot.wait_for('reaction_add', check=check, timeout=120)
+            except asyncio.TimeoutError:
+                await msg.clear_reactions()
+            else:
+                try:
+                    await message.delete()
+                except discord.NotFound:
+                    pass
+
+    @Cog.listener()
+    async def on_message(self, message: discord.Message):
+        await self.handle_invite(message)
 
     @Cog.listener()
     async def on_message_delete(self, message: discord.Message):
