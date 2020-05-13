@@ -674,7 +674,7 @@ class Config(Cog):
         for config in ("guild_config", "punishment_config"):
             await ctx.db.execute(f"DELETE FROM {config} WHERE id = $1", ctx.guild.id)
 
-        await ctx.db.execute("DELETE FROM vc_channel_config WHERE guild_id = $1", ctx.guild.id)
+        await ctx.db.execute("DELETE FROM vc_channel_config WHERE id = $1", ctx.guild.id)
 
         # Release connection since we're going to wait for a bunch of input before actually committing.
         await ctx.release()
