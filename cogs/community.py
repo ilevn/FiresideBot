@@ -95,11 +95,12 @@ class Community(Cog):
         except CannotPaginate as e:
             return await ctx.send(e)
 
-    @staticmethod
-    async def toggle_role(ctx, role_id):
-        if any(r.id == role_id for r in ctx.author.roles):
+    @commands.command()
+    async def shitposter(self, ctx):
+        """Allows you to opt-in or out of the shitpost channel."""
+        if ctx.author._roles.has(FIRESIDE_SHITPOST_ACCESS):
             try:
-                await ctx.author.remove_roles(discord.Object(id=role_id))
+                await ctx.author.remove_roles(discord.Object(id=FIRESIDE_SHITPOST_ACCESS))
             except:
                 await ctx.message.add_reaction('\N{NO ENTRY SIGN}')
             else:
@@ -107,16 +108,6 @@ class Community(Cog):
             finally:
                 return
 
-        try:
-            await ctx.author.add_roles(discord.Object(id=role_id))
-        except:
-            await ctx.message.add_reaction('\N{NO ENTRY SIGN}')
-        else:
-            await ctx.message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
-
-    @commands.command()
-    async def shitposter(self, ctx):
-        """Allows you to opt-in or out of the shitpost channel."""
         prompt = await ctx.prompt(
             "By accepting this prompt, you show you understand that you may be subjected"
             " to offensive behaviour."
@@ -124,7 +115,12 @@ class Community(Cog):
         if not prompt:
             await ctx.send("Aborting...", delete_after=3)
 
-        await self.toggle_role(ctx, FIRESIDE_SHITPOST_ACCESS)
+        try:
+            await ctx.author.add_roles(discord.Object(id=FIRESIDE_SHITPOST_ACCESS))
+        except:
+            await ctx.message.add_reaction('\N{NO ENTRY SIGN}')
+        else:
+            await ctx.message.add_reaction('\N{WHITE HEAVY CHECK MARK}')
 
 
 setup = Community.setup
