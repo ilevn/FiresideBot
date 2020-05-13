@@ -109,6 +109,7 @@ class Community(Cog):
                 return
 
         prompt = await ctx.prompt(
+            "This chat is not heavily regulated for slurs or other types of offensive language.\n"
             "By accepting this prompt, you show you understand that you may be subjected"
             " to offensive behaviour."
         )
