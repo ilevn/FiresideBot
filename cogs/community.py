@@ -117,6 +117,13 @@ class Community(Cog):
     @commands.command()
     async def shitposter(self, ctx):
         """Allows you to opt-in or out of the shitpost channel."""
+        prompt = await ctx.prompt(
+            "By accepting this prompt, you show you understand that you may be subjected"
+            " to offensive behaviour."
+        )
+        if not prompt:
+            await ctx.send("Aborting...", delete_after=3)
+
         await self.toggle_role(ctx, FIRESIDE_SHITPOST_ACCESS)
 
 
