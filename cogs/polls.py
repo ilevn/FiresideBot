@@ -58,6 +58,14 @@ class Polls(Cog):
         embed = discord.Embed(colour=discord.Colour.blurple())
         embed.set_author(name=author.name, icon_url=author.avatar_url)
         content = message.clean_content[6:]
+
+        if message.attachments:
+            file = message.attachments[0]
+            if file.url.lower().endswith(('png', 'jpeg', 'jpg', 'gif', 'webp')):
+                embed.set_image(url=file.url)
+            else:
+                embed.add_field(name='Attachment', value=f'[{file.filename}]({file.url})', inline=False)
+
         # Check if a mod mentioned someone.
         mentions = None
         if author.guild_permissions.manage_guild and message.role_mentions:
@@ -74,6 +82,7 @@ class Polls(Cog):
         for emote in self.poll_emotes:
             await new_message.add_reaction(emote)
 
+        await message.delete()
         await self.bot.pool.execute("UPDATE poll_entries SET message_id = $1 WHERE id = $2",
                                     new_message.id, entry_id)
 
@@ -94,7 +103,6 @@ class Polls(Cog):
             return
 
         if message.content.lower().startswith("poll: "):
-            await message.delete()
             # Make a new poll
             await self.create_poll(message)
             return
