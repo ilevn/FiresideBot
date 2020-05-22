@@ -105,12 +105,12 @@ class Polls(Cog):
             await message.delete(delay=12)
 
     @commands.group(name="polls", aliases=["poll"])
-    @is_mod()
     async def _polls(self, ctx):
         """Handles poll channel configuration for the server."""
         pass
 
     @_polls.command(name="add")
+    @is_mod()
     async def _polls_add(self, ctx, is_strict: Optional[bool] = False, *, channel: discord.TextChannel):
         """Adds a poll channel which is either strict or non strict."""
         query = """INSERT INTO polls (guild_id, channel_id, is_strict) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"""
@@ -123,6 +123,7 @@ class Polls(Cog):
         self.get_guild_polls.invalidate(self, ctx.guild.id)
 
     @_polls.command(name="remove")
+    @is_mod()
     async def _polls_remove(self, ctx, *, channel: discord.TextChannel):
         """Removes a poll channel."""
         query = """DELETE FROM polls WHERE guild_id = $1 AND channel_id = $2"""
