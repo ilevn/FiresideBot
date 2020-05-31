@@ -76,7 +76,9 @@ class Polls(Cog):
         entry_id = await self.bot.pool.fetchval(query, author.id, message.channel.id, message.guild.id)
 
         embed.description = f"__**Poll:**__ {content}"
-        embed.set_footer(text=f'Entry ID {entry_id} | Edit this poll with "poll edit {entry_id} <new content>"')
+        prefix = await self.bot.get_prefix(message)
+        formatter = f'Entry ID {entry_id} | Edit this poll with "{prefix}poll edit {entry_id} <new content>"'
+        embed.set_footer(text=formatter)
 
         new_message = await message.channel.send(content=mentions, embed=embed)
         for emote in self.poll_emotes:
