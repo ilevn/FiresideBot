@@ -1,9 +1,13 @@
+import argparse
 import asyncio
+import io
 import itertools
+import re
+import shlex
 import textwrap
 import weakref
 from collections import Counter, namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import IntEnum
 from typing import Union, Dict
 
@@ -15,6 +19,11 @@ from cogs.utils.converters import FetchedUser, entry_id
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import CannotPaginate, Pages
 from cogs.utils.punishment import Punishment, ActionType
+
+
+class Arguments(argparse.ArgumentParser):
+    def error(self, message):
+        raise RuntimeError(message)
 
 
 class RemovalType(IntEnum):
@@ -141,6 +150,12 @@ class RemovalPages(Pages):
 
         if self.maximum_pages:
             self.embed.set_author(name=f'Page {page}/{self.maximum_pages} ({self.total} DB entries)')
+
+
+def can_execute_action(ctx, user, target):
+    return user.id == ctx.bot.owner_id or \
+           user == ctx.guild.owner or \
+           user.top_role > target.top_role
 
 
 class Removals(Cog):
@@ -613,6 +628,198 @@ class Removals(Cog):
         await ctx.message.delete()
         banned = user.id in (b.user.id for b in await ctx.guild.bans())
         await ctx.send("Yes." if banned else "No.", delete_after=30)
+
+    @commands.command()
+    @is_mod()
+    async def massban(self, ctx, *, args):
+        """Mass bans multiple members from the server.
+
+        This command has a powerful "command line" syntax. **Every option is optional.**
+
+        Users are only banned **if and only if** all conditions are met.
+
+        The following options are valid.
+
+        `--channel` or `-c`: Channel to search for message history.
+        `--reason` or `-r`: The reason for the ban.
+        `--regex`: Regex that usernames must match.
+        `--created`: Matches users whose accounts were created less than specified minutes ago.
+        `--joined`: Matches users that joined less than specified minutes ago.
+        `--joined-before`: Matches users who joined before the member ID given.
+        `--joined-after`: Matches users who joined after the member ID given.
+        `--no-avatar`: Matches users who have no avatar. (no arguments)
+        `--no-roles`: Matches users that have no role. (no arguments)
+        `--show`: Show members instead of banning them. (no arguments)
+        Message history filters (Requires `--channel`):
+        `--contains`: A substring to search for in the message.
+        `--starts`: A substring to search for that the message starts with.
+        `--ends`: A substring to search for that the message ends with.
+        `--match`: A regex to match the message content to.
+        `--search`: How many messages to search. Default 100. Max 2000.
+        `--after`: Messages must come after this message ID.
+        `--before`: Messages must come before this message ID.
+        `--files`: Checks if the message has attachments. (no arguments)
+        `--embeds`: Checks if the message has embeds. (no arguments)
+        """
+
+        # For some reason there are cases due to caching that ctx.author
+        # can be a User even in a guild only context
+        # Rather than trying to work out the kink with it
+        # just upgrade the member itself.
+        if not isinstance(ctx.author, discord.Member):
+            try:
+                author = await ctx.guild.fetch_member(ctx.author.id)
+            except discord.HTTPException:
+                return await ctx.send("Somehow, Discord does not seem to think you are in this server.")
+        else:
+            author = ctx.author
+
+        parser = Arguments(add_help=False, allow_abbrev=False)
+        parser.add_argument("--channel", "-c")
+        parser.add_argument("--reason", "-r")
+        parser.add_argument("--search", type=int, default=100)
+        parser.add_argument("--regex")
+        parser.add_argument("--no-avatar", action="store_true")
+        parser.add_argument("--no-roles", action="store_true")
+        parser.add_argument("--created", type=int)
+        parser.add_argument("--joined", type=int)
+        parser.add_argument("--joined-before", type=int)
+        parser.add_argument("--joined-after", type=int)
+        parser.add_argument("--contains")
+        parser.add_argument("--starts")
+        parser.add_argument("--ends")
+        parser.add_argument("--match")
+        parser.add_argument("--show", action="store_true")
+        parser.add_argument("--embeds", action="store_const", const=lambda m: len(m.embeds))
+        parser.add_argument("--files", action="store_const", const=lambda m: len(m.attachments))
+        parser.add_argument("--after", type=int)
+        parser.add_argument("--before", type=int)
+
+        try:
+            args = parser.parse_args(shlex.split(args))
+        except Exception as e:
+            return await ctx.send(e)
+
+        members = []
+
+        if args.channel:
+            channel = await commands.TextChannelConverter().convert(ctx, args.channel)
+            before = args.before and discord.Object(id=args.before)
+            after = args.after and discord.Object(id=args.after)
+            predicates = []
+            if args.contains:
+                predicates.append(lambda m: args.contains in m.content)
+            if args.starts:
+                predicates.append(lambda m: m.content.startswith(args.starts))
+            if args.ends:
+                predicates.append(lambda m: m.content.endswith(args.ends))
+            if args.match:
+                try:
+                    _match = re.compile(args.match)
+                except re.error as e:
+                    return await ctx.send(f"Invalid regex passed to `--match`: {e}")
+                else:
+                    predicates.append(lambda m, x=_match: x.match(m.content))
+            if args.embeds:
+                predicates.append(args.embeds)
+            if args.files:
+                predicates.append(args.files)
+
+            async for message in channel.history(limit=min(max(1, args.search), 2000), before=before, after=after):
+                if all(p(message) for p in predicates):
+                    members.append(message.author)
+        else:
+            members = ctx.guild.members
+
+        # Member filters.
+        predicates = [
+            lambda m: isinstance(m, discord.Member) and can_execute_action(ctx, author, m),  # Only if applicable.
+            lambda m: not m.bot,  # No bots.
+            lambda m: m.discriminator != '0000',  # No deleted users.
+        ]
+
+        async def _resolve_member(member_id):
+            if (r := ctx.guild.get_member(member_id)) is None:
+                try:
+                    return await ctx.guild.fetch_member(member_id)
+                except discord.HTTPException as e:
+                    raise commands.BadArgument(f"Could not fetch member by ID {member_id}: {e}") from None
+            return r
+
+        if args.regex:
+            try:
+                _regex = re.compile(args.regex)
+            except re.error as e:
+                return await ctx.send(f"Invalid regex passed to `--regex`: {e}")
+            else:
+                predicates.append(lambda m, x=_regex: x.match(m.name))
+
+        if args.no_avatar:
+            predicates.append(lambda m: m.avatar is None)
+        if args.no_roles:
+            predicates.append(lambda m: len(getattr(m, "roles", [])) <= 1)
+
+        now = datetime.utcnow()
+        if args.created:
+            def created(mem, *, offset=now - timedelta(minutes=args.created)):
+                return mem.created_at > offset
+
+            predicates.append(created)
+        if args.joined:
+            def joined(mem, *, offset=now - timedelta(minutes=args.joined)):
+                if isinstance(mem, discord.User):
+                    # If the member is a user then they left already.
+                    return True
+                return mem.joined_at and mem.joined_at > offset
+
+            predicates.append(joined)
+        if args.joined_after:
+            _joined_after_member = await _resolve_member(args.joined_after)
+
+            def joined_after(mem, *, _other=_joined_after_member):
+                return mem.joined_at and _other.joined_at and mem.joined_at > _other.joined_at
+
+            predicates.append(joined_after)
+        if args.joined_before:
+            _joined_before_member = await _resolve_member(args.joined_before)
+
+            def joined_before(mem, *, _other=_joined_before_member):
+                return mem.joined_at and _other.joined_at and mem.joined_at < _other.joined_at
+
+            predicates.append(joined_before)
+
+        members = {m for m in members if all(p(m) for p in predicates)}
+        if not members:
+            return await ctx.send("No members found matching criteria.")
+
+        if args.show:
+            members = sorted(members, key=lambda m: m.joined_at or now)
+            fmt = "\n".join(f"{m.id}\tJoined: {m.joined_at}\tCreated: {m.created_at}\t{m}" for m in members)
+            content = f"Current Time: {datetime.utcnow()}\nTotal members: {len(members)}\n{fmt}"
+            file = discord.File(io.BytesIO(content.encode("utf-8")), filename="members.txt")
+            return await ctx.send(file=file)
+
+        if args.reason is None:
+            return await ctx.send("--reason flag is required.")
+        else:
+            reason = await ActionReason().convert(ctx, args.reason)
+
+        confirm = await ctx.prompt(f"This will ban **{Plural(len(members)):member}**. Are you sure?")
+        if not confirm:
+            return await ctx.send("Aborting.")
+
+        count = 0
+        for member in members:
+            try:
+                # Queue them up.
+                self.removal_information[member.id] = _RemovalEntry(member, ctx.author, reason)
+                await ctx.guild.ban(member, reason=reason)
+            except discord.HTTPException:
+                pass
+            else:
+                count += 1
+
+        await ctx.send(f"Banned {count}/{len(members)}")
 
 
 setup = Removals.setup
