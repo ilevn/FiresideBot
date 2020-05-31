@@ -9,6 +9,11 @@ from cogs.utils.formatting import Plural, human_join
 
 __all__ = ("human_timedelta", "ShortTime", "HumanTime", "Time", "FutureTime", "UserFriendlyTime")
 
+# Monkey patch.
+units = pdt.pdtLocales['en_US'].units
+units['minutes'].append('mins')
+units['seconds'].append('secs')
+
 
 def human_timedelta(dt, *, source=None, accuracy=3, brief=False, suffix=True):
     now = source or datetime.utcnow()
@@ -172,7 +177,17 @@ class UserFriendlyTime(commands.Converter):
         remaining = argument[match.end():].strip()
         return data, remaining
 
+    def copy(self):
+        cls = self.__class__
+        obj = cls.__new__(cls)
+        obj.converter = self.converter
+        obj.default = self.default
+        return obj
+
     async def convert(self, ctx, argument):
+        # Create a copy of ourselves to prevent race conditions from two
+        # events modifying the same instance of a converter.
+        result = self.copy()
         try:
             calendar = HumanTime.calendar
             regex, date_regex = ShortTime.compiled, ShortTime.date_compiled
@@ -180,15 +195,15 @@ class UserFriendlyTime(commands.Converter):
 
             match = regex.match(argument)
             if match is not None and match.group(0):
-                data, remaining = self.extract_match(argument, match)
-                self.dt = now + relativedelta(**data)
-                return await self.check_constraints(ctx, now, remaining)
+                data, remaining = result.extract_match(argument, match)
+                result.dt = now + relativedelta(**data)
+                return await result.check_constraints(ctx, now, remaining)
 
             match = date_regex.match(argument)
             if match is not None and match.group(0):
-                data, remaining = self.extract_match(argument, match)
-                self.dt = datetime.combine(date(**data), now.time())
-                return await self.check_constraints(ctx, now, remaining)
+                data, remaining = result.extract_match(argument, match)
+                result.dt = datetime.combine(date(**data), now.time())
+                return await result.check_constraints(ctx, now, remaining)
 
             # NLP has a thing against "from now", however, it does like "from X".
             # We"re going to handle this here.
@@ -231,7 +246,7 @@ class UserFriendlyTime(commands.Converter):
                     # Oh dear.
                     dt += relativedelta(days=1)
 
-            self.dt = dt
+            result.dt = dt
 
             if begin in (0, 1):
                 if begin == 1:
@@ -248,7 +263,7 @@ class UserFriendlyTime(commands.Converter):
             elif len(argument) == end:
                 remaining = argument[:begin].strip()
 
-            return await self.check_constraints(ctx, now, remaining)
+            return await result.check_constraints(ctx, now, remaining)
         except:
             import traceback
             traceback.print_exc()
