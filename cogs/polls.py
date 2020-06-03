@@ -1,3 +1,4 @@
+import re
 from collections import namedtuple
 from typing import Optional
 
@@ -40,11 +41,16 @@ def to_emoji(c):
 
 
 class Polls(Cog):
-    """Poll voting system."""
+    """Poll voting system.
+    Regular polls can be created with `Poll: <your content>`.
+    Multi react polls are created with `X option poll: <your content>`
+    where X is a number between 4 and 10.
+    """
 
     def __init__(self, bot):
         super().__init__(bot)
         self.poll_emotes = ("\N{THUMBS UP SIGN}", "\N{THUMBS DOWN SIGN}", "\N{SHRUG}")
+        self.poll_regex = re.compile(r"(?:(?P<multi>[4-9]|10)\soption\s)?poll:\s(?P<poll>.+)", re.IGNORECASE)
 
     @cache()
     async def get_guild_polls(self, guild_id):
@@ -52,12 +58,12 @@ class Polls(Cog):
         records = await self.bot.pool.fetch(query, guild_id)
         return records and {channel_id: Poll(channel_id, is_strict) for channel_id, is_strict in records}
 
-    async def create_poll(self, message):
+    async def create_poll(self, message, match):
         author = message.author
 
         embed = discord.Embed(colour=discord.Colour.blurple())
         embed.set_author(name=author.name, icon_url=author.avatar_url)
-        content = message.clean_content[6:]
+        content = discord.utils.escape_mentions(match.group("poll"))
 
         if message.attachments:
             file = message.attachments[0]
@@ -80,8 +86,14 @@ class Polls(Cog):
         formatter = f'Entry ID {entry_id} | Edit this poll with "{prefix}poll edit {entry_id} <new content>"'
         embed.set_footer(text=formatter)
 
+        # Multi option polls use the alphabet as reactions.
+        if (num_emotes := match.group("multi")) is not None:
+            emotes = [to_emoji(i + 1) for i in range(int(num_emotes))]
+        else:
+            emotes = self.poll_emotes
+
         new_message = await message.channel.send(content=mentions, embed=embed)
-        for emote in self.poll_emotes:
+        for emote in emotes:
             await new_message.add_reaction(emote)
 
         await message.delete()
@@ -104,9 +116,9 @@ class Polls(Cog):
         if not poll:
             return
 
-        if message.content.lower().startswith("poll: "):
+        if match := self.poll_regex.match(message.content):
             # Make a new poll
-            await self.create_poll(message)
+            await self.create_poll(message, match)
             return
 
         if poll.is_strict:
