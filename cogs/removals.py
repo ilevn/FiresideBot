@@ -344,6 +344,7 @@ class Removals(Cog):
             except discord.NotFound:
                 # Peculiar.
                 self.logger.warn(f"Removal entry {id} is missing a punishment message.")
+                return
             else:
                 embed = message.embeds[0]
                 embed.set_field_at(1, name="Moderator", value=ctx.author, inline=False)
@@ -636,7 +637,7 @@ class Removals(Cog):
 
         This command has a powerful "command line" syntax. **Every option is optional.**
 
-        Users are only banned **if and only if** all conditions are met.
+        Users are banned **if and only if** all conditions are met.
 
         The following options are valid.
 
