@@ -50,7 +50,8 @@ class Polls(Cog):
     def __init__(self, bot):
         super().__init__(bot)
         self.poll_emotes = ("\N{THUMBS UP SIGN}", "\N{THUMBS DOWN SIGN}", "\N{SHRUG}")
-        self.poll_regex = re.compile(r"(?:(?P<multi>[4-9]|10)\soption\s)?poll:\s(?P<poll>.+)", re.IGNORECASE)
+        self.poll_regex = re.compile(r"(?:(?P<multi>[4-9]|10)\soption\s)?poll:\s(?P<poll>.+)",
+                                     re.IGNORECASE | re.DOTALL)
 
     @cache()
     async def get_guild_polls(self, guild_id):
