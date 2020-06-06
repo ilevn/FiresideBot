@@ -61,7 +61,7 @@ class Moderation(Cog):
         reason = f"Tempblock by {ctx.author} (ID: {ctx.author.id}) until {duration.dt}"
 
         try:
-            await ctx.set_permissions(member, send_messages=False, add_reactions=False, reason=reason)
+            await ctx.channel.set_permissions(member, send_messages=False, add_reactions=False, reason=reason)
         except:
             await ctx.send("\N{THUMBS DOWN SIGN}")
         else:
