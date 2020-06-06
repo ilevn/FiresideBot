@@ -142,7 +142,7 @@ class Polls(Cog):
             await ctx.send('\N{CROSS MARK} This channel is already a configured poll channel! >:(')
             return
 
-        await ctx.send('\N{WHITE HEAVY CHECK MARK} Success :) Poll entry added')
+        await ctx.send('\N{OK HAND SIGN}')
         self.get_guild_polls.invalidate(self, ctx.guild.id)
 
     @_polls.command(name="remove")
