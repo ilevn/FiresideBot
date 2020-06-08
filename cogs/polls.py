@@ -64,7 +64,6 @@ class Polls(Cog):
 
         embed = discord.Embed(colour=discord.Colour.blurple())
         embed.set_author(name=author.name, icon_url=author.avatar_url)
-        content = discord.utils.escape_mentions(match.group("poll"))
 
         if message.attachments:
             file = message.attachments[0]
@@ -73,10 +72,15 @@ class Polls(Cog):
             else:
                 embed.add_field(name='Attachment', value=f'[{file.filename}]({file.url})', inline=False)
 
-        # Check if a mod mentioned someone.
         mentions = None
+        content = match.group("poll")
+        # Check if a mod mentioned someone.
         if author.guild_permissions.manage_guild and message.role_mentions:
-            mentions = ", ".join(map(lambda r: r.mention, message.role_mentions))
+            mentions = message.role_mentions
+            # Remove mentions from the start of the poll..
+            pattern = re.compile(f"^({'|'.join(re.escape('@' + r.name) for r in mentions)})")
+            content = pattern.sub("", content).strip()
+            mentions = ", ".join(r.mention for r in mentions)
 
         # Add entry to DB.
         query = "INSERT INTO poll_entries (author_id, channel_id, guild_id) VALUES ($1, $2, $3) RETURNING id"
@@ -117,7 +121,7 @@ class Polls(Cog):
         if not poll:
             return
 
-        if match := self.poll_regex.match(message.content):
+        if match := self.poll_regex.match(message.clean_content):
             # Make a new poll
             await self.create_poll(message, match)
             return
