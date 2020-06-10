@@ -1,6 +1,5 @@
 import asyncio
 import textwrap
-import weakref
 from collections import namedtuple, defaultdict
 from typing import Optional
 
@@ -11,7 +10,6 @@ from discord.ext.commands import TextChannelConverter, BadArgument, RoleConverte
 
 from cogs.utils import db, Plural, checks, is_mod
 from cogs.utils.cache import cache
-from cogs.utils.command_lock import CLock, CommandIsLocked
 from cogs.utils.meta_cog import Cog
 from cogs.utils.paginators import Pages, CannotPaginate
 
@@ -208,13 +206,6 @@ class ResolvedCommandPermissions:
 
         return blocked
 
-    def is_command_blocked(self, name, channel_id):
-        # fast path
-        if not self._lookup:
-            return False
-
-        return self._is_command_blocked(name, channel_id)
-
     async def is_blocked(self, ctx):
         # Fast path.
         if not self._lookup:
@@ -353,15 +344,8 @@ _Channels = namedtuple("_Channels",
 
 
 class Config(Cog):
-    def __init__(self, bot):
-        super().__init__(bot)
-        self.currently_configuring = weakref.WeakValueDictionary()
-
     async def cog_check(self, ctx):
-        if ctx.guild is None:
-            return False
-
-        return True
+        return bool(ctx.guild)
 
     async def bot_check_once(self, ctx):
         if ctx.guild is None:
@@ -372,7 +356,7 @@ class Config(Cog):
             return True
 
         # Can they bypass?
-        bypass = ctx.author.guild_permissions.view_audit_log
+        bypass = ctx.author.guild_permissions.manage_guild
         if bypass:
             return True
 
@@ -769,15 +753,10 @@ class Config(Cog):
         self.invalidate_guild_config(ctx)
 
     @config.command(name="setup")
+    @commands.max_concurrency(number=1, per=commands.BucketType.guild)
     async def config_setup(self, ctx):
         """Sets up the central database of the bot."""
-        if (lock := self.currently_configuring.get(ctx.guild.id)) is None:
-            self.currently_configuring[ctx.guild.id] = lock = CLock()
-        try:
-            with lock:
-                await self._config_setup(ctx)
-        except CommandIsLocked:
-            await ctx.send(f"This command is currently in use.")
+        await self.config_setup(ctx)
 
     async def _bulk_add_roles(self, ctx, roles, category=None):
         async with ctx.db.transaction():
@@ -787,7 +766,7 @@ class Config(Cog):
             # Don't insert duplicate roles.
             current_roles = {r[0] for r in records}
             guild_id = ctx.guild.id
-            to_insert = [(guild_id, r.id, category) for r in roles if r.id not in current_roles]
+            to_insert = [(guild_id, r.id, category.lower()) for r in roles if r.id not in current_roles]
 
             # BULK COPY.
             await ctx.db.copy_records_to_table('roles', columns=('guild_id', 'role_id', 'category'),
