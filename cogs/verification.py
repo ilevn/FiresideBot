@@ -30,9 +30,15 @@ class Verification(Cog):
         if old_id:
             message = await config.verification_channel.fetch_message(old_id)
             if message:
-                await message.edit(content=content)
-                await ctx.send("\N{THUMBS UP SIGN}")
-                return
+                try:
+                    await message.edit(content=content)
+                except discord.Forbidden:
+                    await ctx.send("Sorry I cannot edit this message anymore. Delete the post and remake it.")
+                    query = "UPDATE guild_config SET verification_message_id = NULL WHERE id = $1"
+                    await ctx.db.execute(query, guild_id)
+                else:
+                    await ctx.send("\N{THUMBS UP SIGN}")
+                    return
 
         # Message not found.
         message = await config.verification_channel.send(content)
