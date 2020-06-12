@@ -1,11 +1,9 @@
-import asyncio
 import json
 import logging
 import sys
 import traceback
 from collections import deque
 from datetime import datetime
-from itertools import cycle
 
 import aiohttp
 import discord
@@ -39,8 +37,6 @@ class FiresideBot(commands.Bot):
         # Hard-code 0x1 and bot owner.
         self.maintainers = {189462608334553089, self.owner_id}
         self.dev_mode = getattr(config, "dev_mode", False)
-        # Start the game status cycle task.
-        self.loop.create_task(self.change_status())
         # Support for sentry.
         self.sentry = None
         if sentry_dsn := config.sentry_dsn:
@@ -65,13 +61,6 @@ class FiresideBot(commands.Bot):
     @property
     def config(self):
         return __import__("config")
-
-    async def change_status(self):
-        await self.wait_until_ready()
-        status = cycle(["Communism", "With Stalin", "and Chilling"])
-        while True:
-            await self.change_presence(activity=discord.Game(next(status)))
-            await asyncio.sleep(10)
 
     async def on_socket_response(self, data):
         self._prev_events.append(data)
