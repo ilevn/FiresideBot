@@ -210,7 +210,11 @@ class Event(Cog):
             # Probably not a rejoin, though that's not certain.
             embed.title = f'\U0001f44b User {member.name} joined the server!'
             # Give them the `Unverified` role.
-            await member.add_roles(discord.Object(id=config.verification_role_id))
+            try:
+                await member.add_roles(discord.Object(id=config.verification_role_id))
+            except discord.NotFound:
+                # Member probably left.
+                return
 
             delta = (member.joined_at - member.created_at).total_seconds() // 60
             if delta < 10:
@@ -289,7 +293,7 @@ class Event(Cog):
             await config.modlog.send(embed=embed)
 
     async def handle_invite(self, message: discord.Message):
-        config = await self.get_guild_config(message.guild.id)
+        config = message.guild and await self.get_guild_config(message.guild.id)
         if not (config and config.modlog):
             return
 
