@@ -379,7 +379,7 @@ class Event(Cog):
 
         try:
             await member.edit(nick=ascii_nick)
-        except discord.Forbidden as e:
+        except discord.HTTPException as e:
             self.logger.warn(e)
             return
 
@@ -430,7 +430,7 @@ class Event(Cog):
             except discord.HTTPException:
                 # No previous roles found.
                 # Imo, this is nicer for joins.
-                pass
+                return
 
         if before.nick != after.nick:
             if after.bot:
