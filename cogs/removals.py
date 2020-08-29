@@ -122,11 +122,10 @@ class RemovalPages(Pages):
             )
 
         self = cls(ctx, nested_pages, per_page=1)
-        self.get_page = self.get_removal_page
         self.total = sum(len(o) for _, _, o in nested_pages)
         return self
 
-    def get_removal_page(self, page):
+    def get_page(self, page):
         date, description, info = self.entries[page - 1]
         self.title = f'Removals on {date:%d/%m/%Y}'
         self.description = description
