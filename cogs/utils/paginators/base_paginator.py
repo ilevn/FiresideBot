@@ -12,7 +12,7 @@ class Pages:
     """Implements a paginator that queries the user for the
     pagination interface.
     Pages are 1-index based, not 0-index based.
-    If the user does not reply within 2 minutes then the pagination
+    If the user does not reply within 2 minutes, then the pagination
     interface exits automatically.
     Parameters
     ------------
@@ -24,6 +24,10 @@ class Pages:
         How many entries show up per page.
     show_entry_count: bool
         Whether to show an entry count in the footer.
+    use_index: bool
+        Whether to use indices while listing entries.
+    channel: discord.TextChannel
+        The output channel.
     Attributes
     -----------
     embed: discord.Embed
