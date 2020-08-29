@@ -66,7 +66,10 @@ class FiresideBot(commands.Bot):
         self._prev_events.append(data)
 
     async def on_ready(self):
-        self.uptime = datetime.utcnow()
+        if self.uptime is None:
+            # READY is not guaranteed to only be called once.
+            self.uptime = datetime.utcnow()
+
         client_id = (await self.application_info()).id
         self.logger.info(
             f"Loaded Fireside Bot, logged in as {self.user}"
