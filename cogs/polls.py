@@ -183,9 +183,9 @@ class Polls(Cog):
         try:
             await message.edit(embed=embed)
         except discord.Forbidden:
-            await ctx.send("Sorry, I cannot edit this message anymore.")
+            await ctx.send("Sorry, I cannot edit this message anymore.", delete_after=3)
         else:
-            await ctx.send("Successfully edited poll entry.")
+            await ctx.send("Successfully edited poll entry.", delete_after=3)
 
     @commands.command()
     @is_mod()
